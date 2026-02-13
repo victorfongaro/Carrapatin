@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Dimensions,
   Image,
@@ -14,6 +15,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { salvarFotoVaca } from '../../firebase/vacasService'; // 👈 IMPORTANTE!
 
 const { width, height } = Dimensions.get('window');
 
@@ -26,7 +28,9 @@ export default function CameraScreen() {
   
   const [permission, requestPermission] = useCameraPermissions();
   const [fotoTirada, setFotoTirada] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const fazendaId = "minha-fazenda-001";
   
   // ANIMAÇÕES
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -47,7 +51,6 @@ export default function CameraScreen() {
       }),
     ]).start();
 
-    // Animação do scan
     Animated.loop(
       Animated.sequence([
         Animated.timing(scanAnim, {
@@ -74,10 +77,30 @@ export default function CameraScreen() {
     }
   };
 
-  const confirmarFoto = () => {
-    // Volta para tela de vacas com a foto
-    router.back();
-    // Aqui você salva a foto no estado global/context
+  // ✅ FUNÇÃO CORRIGIDA - AGORA SALVA A FOTO E VOLTA CORRETAMENTE!
+  const confirmarFoto = async () => {
+    if (!fotoTirada || !posicao || !vacaId) return;
+    
+    setIsSaving(true);
+    
+    try {
+      // 1. SALVA A FOTO NO FIREBASE
+      await salvarFotoVaca(
+        fazendaId,
+        vacaId,
+        posicao as 'esquerda' | 'direita' | 'entrePerdas',
+        fotoTirada
+      );
+      
+      // 2. VOLTA APENAS UMA TELA (para vacas/index)
+      router.back();
+      
+    } catch (error) {
+      console.error('Erro ao salvar foto:', error);
+      Alert.alert('Erro', 'Não foi possível salvar a foto');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const tirarOutraFoto = () => {
@@ -111,7 +134,6 @@ export default function CameraScreen() {
     );
   }
 
-  // Nomes das posições
   const posicaoInfo = {
     esquerda: { 
       nome: 'Lateral Esquerda', 
@@ -147,9 +169,7 @@ export default function CameraScreen() {
             flash="auto"
           />
           
-          {/* OVERLAY COM MÁSCARA */}
           <View style={styles.overlay}>
-            {/* ÁREA DE SCAN */}
             <View style={styles.scanArea}>
               <Animated.View 
                 style={[
@@ -176,12 +196,11 @@ export default function CameraScreen() {
               </View>
             </View>
 
-            {/* INFORMAÇÕES DA VACA */}
             <BlurView intensity={80} tint="dark" style={styles.vacaInfoBar}>
               <View style={styles.vacaInfoContent}>
                 <View style={styles.vacaIcon}>
-                    <Ionicons name="paw" size={20} color="white" />
-                  </View>
+                  <Ionicons name="paw" size={20} color="white" />
+                </View>
                 <View>
                   <Text style={styles.vacaNome}>{vacaNome}</Text>
                   <Text style={styles.vacaBrinco}>ID: {vacaId}</Text>
@@ -189,7 +208,6 @@ export default function CameraScreen() {
               </View>
             </BlurView>
 
-            {/* INSTRUÇÕES */}
             <Animated.View 
               style={[
                 styles.instructions,
@@ -204,7 +222,6 @@ export default function CameraScreen() {
               </Text>
             </Animated.View>
 
-            {/* BOTÃO DE CAPTURA */}
             <View style={styles.captureContainer}>
               <TouchableOpacity 
                 style={styles.captureButton}
@@ -222,7 +239,6 @@ export default function CameraScreen() {
           </View>
         </>
       ) : (
-        /* PREVIEW DA FOTO */
         <Animated.View style={[styles.previewContainer, { opacity: fadeAnim }]}>
           <Image source={{ uri: fotoTirada }} style={styles.previewImage} />
           
@@ -241,6 +257,7 @@ export default function CameraScreen() {
             <TouchableOpacity 
               style={styles.previewActionButton}
               onPress={tirarOutraFoto}
+              disabled={isSaving}
             >
               <LinearGradient
                 colors={['#4b5563', '#374151']}
@@ -254,13 +271,16 @@ export default function CameraScreen() {
             <TouchableOpacity 
               style={styles.previewActionButton}
               onPress={confirmarFoto}
+              disabled={isSaving}
             >
               <LinearGradient
-                colors={['#059669', '#047857']}
+                colors={isSaving ? ['#9ca3af', '#6b7280'] : ['#059669', '#047857']}
                 style={styles.previewActionGradient}
               >
-                <Ionicons name="checkmark" size={24} color="white" />
-                <Text style={styles.previewActionText}>Usar foto</Text>
+                <Ionicons name={isSaving ? "sync" : "checkmark"} size={24} color="white" />
+                <Text style={styles.previewActionText}>
+                  {isSaving ? 'Salvando...' : 'Usar foto'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -270,6 +290,7 @@ export default function CameraScreen() {
   );
 }
 
+// ... (mantenha todos os styles iguais)
 const styles = StyleSheet.create({
   container: {
     flex: 1,

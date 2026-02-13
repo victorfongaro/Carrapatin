@@ -2,8 +2,8 @@ import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Alert,
   Animated,
@@ -21,7 +21,15 @@ import {
   View
 } from 'react-native';
 
+import { 
+  carregarVacas, 
+  salvarFotoVaca, 
+  salvarAnalise,
+  atualizarTotalVacas 
+} from '../../firebase/vacasService';
+
 const { width } = Dimensions.get('window');
+const fazendaId = "minha-fazenda-001";
 
 interface Vaca {
   id: string;
@@ -32,44 +40,37 @@ interface Vaca {
     direita: string | null;
     entrePerdas: string | null;
   };
+  nivelInfestacao?: number;
 }
 
 export default function VacasScreen() {
-  const [vacas, setVacas] = useState<Vaca[]>([
-    {
-      id: '001',
-      nome: 'Mimosa',
-      brinco: 'BR-001',
-      fotos: { esquerda: null, direita: null, entrePerdas: null }
-    },
-    {
-      id: '002',
-      nome: 'Estrela',
-      brinco: 'BR-002',
-      fotos: { esquerda: null, direita: null, entrePerdas: null }
-    },
-    {
-      id: '003',
-      nome: 'Morena',
-      brinco: 'BR-003',
-      fotos: { esquerda: null, direita: null, entrePerdas: null }
-    },
-  ]);
-  
-  const [selectedVaca, setSelectedVaca] = useState<Vaca>(vacas[0]);
+  const [vacas, setVacas] = useState<Vaca[]>([]);
+  const [selectedVaca, setSelectedVaca] = useState<Vaca | null>(null);
   const [showVacaSelector, setShowVacaSelector] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [numeroVacas, setNumeroVacas] = useState('145');
   const [isCalculando, setIsCalculando] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [fotoAtualizada, setFotoAtualizada] = useState(0);
   
   // ANIMAÇÕES
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  // CARREGAR VACAS DO FIREBASE
+  const carregarDados = async () => {
+    const vacasData = await carregarVacas(fazendaId);
+    setVacas(vacasData);
+    if (vacasData.length > 0 && !selectedVaca) {
+      setSelectedVaca(vacasData[0]);
+    }
+  };
 
   useEffect(() => {
+    carregarDados();
+    
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -81,10 +82,24 @@ export default function VacasScreen() {
         duration: 600,
         useNativeDriver: true,
       }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        useNativeDriver: true,
+      }),
     ]).start();
   }, []);
 
+  // ATUALIZAR QUANDO VOLTAR DA CÂMERA
+   useFocusEffect(
+    useCallback(() => {
+      console.log('📸 Tela de vacas em foco - recarregando dados...');
+      carregarDados();
+    }, [])
+  );
   const abrirCamera = (posicao: 'esquerda' | 'direita' | 'entrePerdas') => {
+    if (!selectedVaca) return;
+    
     router.push({
       pathname: '/vacas/camera',
       params: {
@@ -95,7 +110,9 @@ export default function VacasScreen() {
     });
   };
 
-  const handleAnalisarCarrapatos = () => {
+  const handleAnalisarCarrapatos = async () => {
+    if (!selectedVaca) return;
+    
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setIsCalculando(true);
     
@@ -113,28 +130,53 @@ export default function VacasScreen() {
       }),
     ]).start();
     
-    // SIMULA CÁLCULO DA IA
-    setTimeout(() => {
+    // SIMULA CÁLCULO DA IA (dado estático)
+    setTimeout(async () => {
+      // Nível de infestação SIMULADO
+      const nivelSimulado = Math.floor(Math.random() * 40) + 30; // 30-70%
+      
+      // Salva no Firebase
+      await salvarAnalise(fazendaId, selectedVaca.id, nivelSimulado);
+      
       setIsCalculando(false);
       
-      // ANIMAÇÃO DE PROGRESSO
-      Animated.timing(progressAnim, {
-        toValue: 1,
-        duration: 2000,
-        useNativeDriver: false,
-      }).start();
+      // ANIMAÇÃO DE TRANSIÇÃO PARA DASHBOARD
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 0.95,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
       
-      // VIBRAÇÃO E REDIRECIONAMENTO
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // MOSTRA MENSAGEM DE SUCESSO
+      // ALERTA DE SUCESSO
       Alert.alert(
-        'Análise Concluída! 🎉',
-        'Nível de infestação atualizado com sucesso',
+        '🎉 Análise Concluída!',
+        `Nível de infestação: ${nivelSimulado}%\n\nO risco da fazenda foi atualizado.`,
         [
           {
             text: 'Ver Dashboard',
-            onPress: () => router.push('/')
+            onPress: () => {
+              // ANIMAÇÃO DE SAÍDA
+              Animated.timing(fadeAnim, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+              }).start(() => {
+                router.push('/');
+              });
+            }
+          },
+          {
+            text: 'Continuar',
+            style: 'cancel'
           }
         ]
       );
@@ -142,6 +184,7 @@ export default function VacasScreen() {
   };
 
   const getFotosCount = () => {
+    if (!selectedVaca) return 0;
     const fotos = selectedVaca.fotos;
     return Object.values(fotos).filter(f => f !== null).length;
   };
@@ -224,175 +267,194 @@ export default function VacasScreen() {
     );
   };
 
+  if (!selectedVaca) {
+    return (
+      <View style={styles.container}>
+        <Text>Carregando...</Text>
+      </View>
+    );
+  }
+
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor="#f9fafb" />
       
-      <ScrollView 
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={() => setRefreshing(false)}
-            tintColor="#10b981"
-          />
-        }
-      >
-        {/* HEADER */}
-        <LinearGradient
-          colors={['#ffffff', '#f9fafb']}
-          style={styles.headerGradient}
+      <Animated.View style={[{ flex: 1, opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+        <ScrollView 
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={() => {
+                setRefreshing(true);
+                carregarDados().then(() => setRefreshing(false));
+              }}
+              tintColor="#10b981"
+            />
+          }
         >
-          <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
+          {/* HEADER */}
+          <LinearGradient
+            colors={['#ffffff', '#f9fafb']}
+            style={styles.headerGradient}
+          >
+            <View style={styles.headerRow}>
+              <View style={styles.headerLeft}>
+                <TouchableOpacity 
+                  style={styles.backButton}
+                  onPress={() => {
+                    Animated.timing(fadeAnim, {
+                      toValue: 0,
+                      duration: 300,
+                      useNativeDriver: true,
+                    }).start(() => router.back());
+                  }}
+                >
+                  <Ionicons name="arrow-back" size={24} color="#4b5563" />
+                </TouchableOpacity>
+                <View>
+                  <Text style={styles.headerTitle}>Monitoramento</Text>
+                  <Text style={styles.headerSubtitle}>Registro fotográfico</Text>
+                </View>
+              </View>
+              
               <TouchableOpacity 
-                style={styles.backButton}
-                onPress={() => router.back()}
+                style={styles.configButton}
+                onPress={() => setShowConfigModal(true)}
               >
-                <Ionicons name="arrow-back" size={24} color="#4b5563" />
+                <Ionicons name="settings-outline" size={24} color="#4b5563" />
               </TouchableOpacity>
-              <View>
-                <Text style={styles.headerTitle}>Monitoramento</Text>
-                <Text style={styles.headerSubtitle}>Registro fotográfico</Text>
-              </View>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.configButton}
-              onPress={() => setShowConfigModal(true)}
-            >
-              <Ionicons name="settings-outline" size={24} color="#4b5563" />
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
+          </LinearGradient>
 
-        {/* SELETOR DE VACA */}
-        <Animated.View 
-          style={[
-            styles.vacaSelector,
-            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
-          ]}
-        >
-          <TouchableOpacity 
-            style={styles.vacaSelectorButton}
-            onPress={() => setShowVacaSelector(true)}
-          >
-            <LinearGradient
-              colors={['#ffffff', '#fafafa']}
-              style={styles.vacaSelectorGradient}
-            >
-              <View style={styles.vacaSelectorContent}>
-                <View style={styles.vacaIconLarge}>
-                  <MaterialCommunityIcons name="cow" size={28} color="#059669" />
-                </View>
-                <View style={styles.vacaInfo}>
-                  <Text style={styles.vacaNome}>{selectedVaca.nome}</Text>
-                  <Text style={styles.vacaBrinco}>Brinco: {selectedVaca.brinco}</Text>
-                </View>
-                <View style={styles.fotosCount}>
-                  <Text style={styles.fotosCountText}>{getFotosCount()}/3</Text>
-                </View>
-                <Ionicons name="chevron-down" size={20} color="#6b7280" />
-              </View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* MOLDEIRAS DE FOTO - 3 BOTÕES */}
-        <View style={styles.fotosGrid}>
-          <FotoPlaceholder 
-            posicao="esquerda"
-            foto={selectedVaca.fotos.esquerda}
-            onPress={() => abrirCamera('esquerda')}
-          />
-          <FotoPlaceholder 
-            posicao="entrePerdas"
-            foto={selectedVaca.fotos.entrePerdas}
-            onPress={() => abrirCamera('entrePerdas')}
-          />
-          <FotoPlaceholder 
-            posicao="direita"
-            foto={selectedVaca.fotos.direita}
-            onPress={() => abrirCamera('direita')}
-          />
-        </View>
-
-        {/* PROGRESSO */}
-        <Animated.View style={[styles.progressContainer, { opacity: fadeAnim }]}>
-          <BlurView intensity={80} tint="light" style={styles.progressBlur}>
-            <View style={styles.progressHeader}>
-              <Text style={styles.progressTitle}>Progresso da Análise</Text>
-              <Text style={styles.progressPercentage}>{getFotosCount() * 33}%</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <Animated.View 
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${(getFotosCount() * 33)}%`,
-                    backgroundColor: isProntoParaAnalise() ? '#10b981' : '#f59e0b'
-                  }
-                ]}
-              />
-            </View>
-            <Text style={styles.progressHint}>
-              {isProntoParaAnalise() 
-                ? '✅ Pronto para analisar!'
-                : `📸 Tire mais ${3 - getFotosCount()} foto(s)`}
-            </Text>
-          </BlurView>
-        </Animated.View>
-
-        {/* BOTÃO DE ANÁLISE */}
-        <Animated.View style={[styles.analiseContainer, { opacity: fadeAnim }]}>
-          <TouchableOpacity 
+          {/* SELETOR DE VACA */}
+          <Animated.View 
             style={[
-              styles.analiseButton,
-              !isProntoParaAnalise() && styles.analiseButtonDisabled
+              styles.vacaSelector,
+              { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }
             ]}
-            disabled={!isProntoParaAnalise() || isCalculando}
-            onPress={handleAnalisarCarrapatos}
           >
-            <LinearGradient
-              colors={isProntoParaAnalise() 
-                ? ['#059669', '#047857'] 
-                : ['#9ca3af', '#6b7280']}
-              style={styles.analiseGradient}
+            <TouchableOpacity 
+              style={styles.vacaSelectorButton}
+              onPress={() => setShowVacaSelector(true)}
             >
-              <Animated.View style={{ transform: [{ scale: isCalculando ? pulseAnim : 1 }] }}>
-                {isCalculando ? (
-                  <>
-                    <Ionicons name="sync" size={32} color="white" style={styles.analiseIcon} />
-                    <Text style={styles.analiseText}>Analisando...</Text>
-                    <Text style={styles.analiseSubtext}>Contando carrapatos</Text>
-                  </>
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="bug" size={32} color="white" style={styles.analiseIcon} />
-                    <Text style={styles.analiseText}>Analisar Carrapatos</Text>
-                    <Text style={styles.analiseSubtext}>
-                      {isProntoParaAnalise() 
-                        ? 'Clique para iniciar a contagem' 
-                        : 'Complete as 3 fotos primeiro'}
-                    </Text>
-                  </>
-                )}
-              </Animated.View>
-            </LinearGradient>
-          </TouchableOpacity>
-        </Animated.View>
+              <LinearGradient
+                colors={['#ffffff', '#fafafa']}
+                style={styles.vacaSelectorGradient}
+              >
+                <View style={styles.vacaSelectorContent}>
+                  <View style={styles.vacaIconLarge}>
+                    <MaterialCommunityIcons name="cow" size={28} color="#059669" />
+                  </View>
+                  <View style={styles.vacaInfo}>
+                    <Text style={styles.vacaNome}>{selectedVaca.nome}</Text>
+                    <Text style={styles.vacaBrinco}>Brinco: {selectedVaca.brinco}</Text>
+                  </View>
+                  <View style={styles.fotosCount}>
+                    <Text style={styles.fotosCountText}>{getFotosCount()}/3</Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={20} color="#6b7280" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
 
-        {/* INFORMAÇÕES ADICIONAIS */}
-        <View style={styles.infoContainer}>
-          <View style={styles.infoCard}>
-            <Ionicons name="information-circle" size={20} color="#059669" />
-            <Text style={styles.infoText}>
-              Tire fotos dos 3 ângulos para uma análise completa
-            </Text>
+          {/* MOLDEIRAS DE FOTO - 3 BOTÕES */}
+          <View style={styles.fotosGrid}>
+            <FotoPlaceholder 
+              posicao="esquerda"
+              foto={selectedVaca.fotos?.esquerda || null}
+              onPress={() => abrirCamera('esquerda')}
+            />
+            <FotoPlaceholder 
+              posicao="entrePerdas"
+              foto={selectedVaca.fotos?.entrePerdas || null}
+              onPress={() => abrirCamera('entrePerdas')}
+            />
+            <FotoPlaceholder 
+              posicao="direita"
+              foto={selectedVaca.fotos?.direita || null}
+              onPress={() => abrirCamera('direita')}
+            />
           </View>
-        </View>
-      </ScrollView>
+
+          {/* PROGRESSO */}
+          <Animated.View style={[styles.progressContainer, { opacity: fadeAnim }]}>
+            <BlurView intensity={80} tint="light" style={styles.progressBlur}>
+              <View style={styles.progressHeader}>
+                <Text style={styles.progressTitle}>Progresso da Análise</Text>
+                <Text style={styles.progressPercentage}>{getFotosCount() * 33}%</Text>
+              </View>
+              <View style={styles.progressBar}>
+                <Animated.View 
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${(getFotosCount() * 33)}%`,
+                      backgroundColor: isProntoParaAnalise() ? '#10b981' : '#f59e0b'
+                    }
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressHint}>
+                {isProntoParaAnalise() 
+                  ? '✅ Pronto para analisar!'
+                  : `📸 Tire mais ${3 - getFotosCount()} foto(s)`}
+              </Text>
+            </BlurView>
+          </Animated.View>
+
+          {/* BOTÃO DE ANÁLISE */}
+          <Animated.View style={[styles.analiseContainer, { opacity: fadeAnim }]}>
+            <TouchableOpacity 
+              style={[
+                styles.analiseButton,
+                !isProntoParaAnalise() && styles.analiseButtonDisabled
+              ]}
+              disabled={!isProntoParaAnalise() || isCalculando}
+              onPress={handleAnalisarCarrapatos}
+            >
+              <LinearGradient
+                colors={isProntoParaAnalise() 
+                  ? ['#059669', '#047857'] 
+                  : ['#9ca3af', '#6b7280']}
+                style={styles.analiseGradient}
+              >
+                <Animated.View style={{ transform: [{ scale: isCalculando ? pulseAnim : 1 }] }}>
+                  {isCalculando ? (
+                    <>
+                      <Ionicons name="sync" size={32} color="white" style={styles.analiseIcon} />
+                      <Text style={styles.analiseText}>Analisando...</Text>
+                      <Text style={styles.analiseSubtext}>Contando carrapatos</Text>
+                    </>
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons name="bug" size={32} color="white" style={styles.analiseIcon} />
+                      <Text style={styles.analiseText}>Analisar Carrapatos</Text>
+                      <Text style={styles.analiseSubtext}>
+                        {isProntoParaAnalise() 
+                          ? 'Clique para iniciar a contagem' 
+                          : 'Complete as 3 fotos primeiro'}
+                      </Text>
+                    </>
+                  )}
+                </Animated.View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* INFORMAÇÕES ADICIONAIS */}
+          <View style={styles.infoContainer}>
+            <View style={styles.infoCard}>
+              <Ionicons name="information-circle" size={20} color="#059669" />
+              <Text style={styles.infoText}>
+                Tire fotos dos 3 ângulos para uma análise completa
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      </Animated.View>
 
       {/* MODAL - SELETOR DE VACAS */}
       <Modal
@@ -420,7 +482,7 @@ export default function VacasScreen() {
                 <TouchableOpacity 
                   style={[
                     styles.vacaItem,
-                    selectedVaca.id === item.id && styles.vacaItemSelected
+                    selectedVaca?.id === item.id && styles.vacaItemSelected
                   ]}
                   onPress={() => {
                     setSelectedVaca(item);
@@ -430,12 +492,12 @@ export default function VacasScreen() {
                   <View style={styles.vacaItemLeft}>
                     <View style={[
                       styles.vacaItemIcon,
-                      { backgroundColor: selectedVaca.id === item.id ? '#059669' : '#d1fae5' }
+                      { backgroundColor: selectedVaca?.id === item.id ? '#059669' : '#d1fae5' }
                     ]}>
                       <MaterialCommunityIcons 
                         name="cow" 
                         size={24} 
-                        color={selectedVaca.id === item.id ? 'white' : '#059669'} 
+                        color={selectedVaca?.id === item.id ? 'white' : '#059669'} 
                       />
                     </View>
                     <View>
@@ -443,7 +505,7 @@ export default function VacasScreen() {
                       <Text style={styles.vacaItemBrinco}>Brinco: {item.brinco}</Text>
                     </View>
                   </View>
-                  {selectedVaca.id === item.id && (
+                  {selectedVaca?.id === item.id && (
                     <Ionicons name="checkmark-circle" size={24} color="#059669" />
                   )}
                 </TouchableOpacity>
@@ -495,7 +557,11 @@ export default function VacasScreen() {
 
               <TouchableOpacity 
                 style={styles.configSaveButton}
-                onPress={() => setShowConfigModal(false)}
+                onPress={async () => {
+                  await atualizarTotalVacas(fazendaId, parseInt(numeroVacas) || 0);
+                  setShowConfigModal(false);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
               >
                 <LinearGradient
                   colors={['#059669', '#047857']}
@@ -512,6 +578,7 @@ export default function VacasScreen() {
   );
 }
 
+// ESTILOS (mantive os mesmos do seu código original)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
