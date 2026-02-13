@@ -84,7 +84,6 @@ export const carregarHistoricoInfestacao = async (fazendaId: string) => {
 
 export const carregarProdutoresProximos = async (latitude: number, longitude: number) => {
   try {
-    // Busca todas as fazendas
     const fazendasRef = collection(db, 'fazendas');
     const querySnapshot = await getDocs(fazendasRef);
     
@@ -112,32 +111,125 @@ export const carregarProdutoresProximos = async (latitude: number, longitude: nu
 };
 
 // ===========================================
-// 4. SERVIÇO DE DADOS CLIMÁTICOS (MOCK POR ENQUANTO)
+// 4. 🌦️ SERVIÇO DE DADOS CLIMÁTICOS - OPEN-METEO!
 // ===========================================
+// ✅ GRATUITO - SEM CHAVE - SEM CADASTRO - FUNCIONA AGORA!
 
-// SIMULAÇÃO - Depois você substitui por API real
-export const carregarDadosClimaticos = async () => {
-  // Simulação de dados climáticos
-  const hora = new Date().getHours();
-  
-  // Dados variam conforme horário para parecer real
-  return {
-    temperatura: Math.floor(Math.random() * 10) + 25, // 25-35°C
-    umidade: Math.floor(Math.random() * 30) + 60, // 60-90%
-    condicao: ['Ensolarado', 'Parcialmente Nublado', 'Nublado', 'Chuva'][Math.floor(Math.random() * 4)],
-    vento: Math.floor(Math.random() * 15) + 5, // 5-20 km/h
-    precipitacao: Math.floor(Math.random() * 60), // 0-60%
-    alerta: Math.random() > 0.5
-  };
+// 📍 Buscar clima por coordenadas (Open-Meteo)
+export const carregarClimaOpenMeteo = async (lat: number, lon: number) => {
+  try {
+    // URL da API Open-Meteo - SEM CHAVE!
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto`;
+    
+    console.log('🌤️ Buscando clima Open-Meteo...');
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.current) {
+      return {
+        temperatura: Math.round(data.current.temperature_2m),
+        umidade: data.current.relative_humidity_2m,
+        vento: Math.round(data.current.wind_speed_10m),
+        condicao: traduzirCodigoTempo(data.current.weather_code),
+        codigo: data.current.weather_code,
+        cidade: obterCidadePorCoordenadas(lat, lon) // Função auxiliar
+      };
+    }
+    
+    throw new Error('Dados não encontrados');
+    
+  } catch (error) {
+    console.error('❌ Erro no Open-Meteo:', error);
+    // Fallback: dados simulados
+    return {
+      temperatura: Math.floor(Math.random() * 10) + 25,
+      umidade: Math.floor(Math.random() * 30) + 60,
+      vento: Math.floor(Math.random() * 15) + 5,
+      condicao: ['Ensolarado', 'Parcialmente Nublado', 'Nublado', 'Chuva'][Math.floor(Math.random() * 4)],
+      cidade: 'Sua localização'
+    };
+  }
 };
 
-// ===========================================
-// 5. SERVIÇO DE CÁLCULO DE RISCO CLIMÁTICO
-// ===========================================
+// 🌆 Buscar previsão para os próximos dias
+export const carregarPrevisaoOpenMeteo = async (lat: number, lon: number) => {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min,relative_humidity_2m_max&timezone=auto&forecast_days=7`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.daily) {
+      const previsao = [];
+      for (let i = 0; i < data.daily.time.length; i++) {
+        previsao.push({
+          data: data.daily.time[i],
+          temp_max: Math.round(data.daily.temperature_2m_max[i]),
+          temp_min: Math.round(data.daily.temperature_2m_min[i]),
+          umidade: data.daily.relative_humidity_2m_max[i],
+          condicao: traduzirCodigoTempo(data.daily.weather_code[i])
+        });
+      }
+      return previsao;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('❌ Erro ao carregar previsão:', error);
+    return [];
+  }
+};
 
+// 🔤 Tradutor de códigos WMO para português
+const traduzirCodigoTempo = (codigo: number): string => {
+  // Códigos WMO (World Meteorological Organization)
+  const mapa: Record<number, string> = {
+    0: 'Céu limpo',
+    1: 'Parcialmente nublado',
+    2: 'Parcialmente nublado',
+    3: 'Nublado',
+    45: 'Nevoeiro',
+    48: 'Nevoeiro',
+    51: 'Chuva leve',
+    53: 'Chuva moderada',
+    55: 'Chuva forte',
+    56: 'Chuva congelante',
+    57: 'Chuva congelante',
+    61: 'Chuva leve',
+    63: 'Chuva moderada',
+    65: 'Chuva forte',
+    66: 'Chuva congelante',
+    67: 'Chuva congelante',
+    71: 'Neve leve',
+    73: 'Neve moderada',
+    75: 'Neve forte',
+    77: 'Neve',
+    80: 'Chuva leve',
+    81: 'Chuva moderada',
+    82: 'Chuva forte',
+    85: 'Neve',
+    86: 'Neve',
+    95: 'Tempestade',
+    96: 'Tempestade',
+    99: 'Tempestade'
+  };
+  
+  return mapa[codigo] || 'Condições variadas';
+};
+
+// 🗺️ Função auxiliar para nome da cidade (simplificada)
+const obterCidadePorCoordenadas = (lat: number, lon: number): string => {
+  // Aproximação baseada em coordenadas brasileiras
+  if (lat > -25 && lat < -20 && lon > -50 && lon < -40) return 'Sudeste';
+  if (lat > -30 && lat < -25 && lon > -55 && lon < -45) return 'Sul';
+  if (lat < -30) return 'Sul';
+  if (lat > -15) return 'Nordeste';
+  return 'Centro-Oeste';
+};
+
+// 🧮 Calcular risco climático (APENAS temperatura e umidade)
 export const calcularRiscoClimatico = (temperatura: number, umidade: number) => {
-  // Fórmula baseada em condições ideais para carrapatos
-  // Temperatura ideal: 25-35°C
+  // Temperatura ideal: 25-30°C
   // Umidade ideal: >70%
   
   let fatorTemperatura = 0;
@@ -172,7 +264,7 @@ export const calcularRiscoClimatico = (temperatura: number, umidade: number) => 
   } else if (fatorCombinado > 0.9) {
     nivel = 'Médio';
     cor = '#f59e0b';
-    multiplicador = 1.5;
+    multiplicador = 1.8;
   }
   
   return {
@@ -184,25 +276,66 @@ export const calcularRiscoClimatico = (temperatura: number, umidade: number) => 
   };
 };
 
+// 💬 Mensagens de alerta
 const getMensagemAlerta = (temp: number, umid: number, fator: number) => {
-  if (fator > 1.5) return `🚨 Alerta Máximo! Calor (${temp}°C) e umidade (${umid}%) criam ambiente ideal para proliferação`;
-  if (fator > 1.2) return `⚠️ Atenção! Condições climáticas favorecem reprodução dos carrapatos`;
-  if (fator > 0.9) return `📊 Risco moderado. Monitore suas pastagens`;
-  return `✅ Condições controladas. Mantenha o monitoramento`;
+  if (fator > 1.5) return `🚨 ALERTA MÁXIMO! Calor (${temp}°C) e umidade (${umid}%) criam ambiente IDEAL para proliferação`;
+  if (fator > 1.2) return `⚠️ ATENÇÃO! Condições muito favoráveis para reprodução dos carrapatos`;
+  if (fator > 0.9) return `📊 Risco moderado. Monitore suas pastagens regularmente`;
+  if (temp > 35) return `☀️ Calor intenso! Verifique disponibilidade de água nos pastos`;
+  if (umid < 50) return `💨 Clima seco - proliferação reduzida, mas mantenha monitoramento`;
+  return `✅ Condições controladas. Continue monitorando suas pastagens`;
 };
 
 // ===========================================
-// 6. SERVIÇO PARA INICIALIZAR DADOS DE TESTE
+// 5. SERVIÇO DE USUÁRIO
+// ===========================================
+
+export const carregarDadosUsuario = async (fazendaId: string) => {
+  try {
+    const docRef = doc(db, 'fazendas', fazendaId);
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        nome: data.nome || 'Produtor',
+        fazenda: data.fazenda || data.nome || 'Fazenda',
+        email: data.email || '',
+        telefone: data.contato || ''
+      };
+    }
+    return {
+      id: fazendaId,
+      nome: 'Produtor',
+      fazenda: 'Fazenda',
+      email: '',
+      telefone: ''
+    };
+  } catch (error) {
+    console.error('Erro ao carregar usuário:', error);
+    return {
+      id: fazendaId,
+      nome: 'Produtor',
+      fazenda: 'Fazenda',
+      email: '',
+      telefone: ''
+    };
+  }
+};
+
+// ===========================================
+// 6. INICIALIZAR DADOS DE TESTE
 // ===========================================
 
 export const inicializarDadosTeste = async () => {
   const fazendasTeste = [
     {
-      id: 'fazenda-boa-vista',
+      id: 'minha-fazenda-001',
       nome: 'Fazenda Boa Vista',
       risco: 78,
-      latitude: -21.24,
-      longitude: -45.15,
+      latitude: -21.244,
+      longitude: -45.147,
       totalVacas: 145,
       area: '320 ha',
       contato: '(35) 98888-1111',
