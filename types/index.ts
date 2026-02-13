@@ -5,6 +5,10 @@ export interface Fazenda {
   risco: number;
   latitude: number;
   longitude: number;
+  // NOVOS CAMPOS OPCIONAIS
+  ultimaAtualizacao?: string;
+  vacas?: number;
+  area?: string;
 }
 
 // Tipos para Vacas
