@@ -164,19 +164,19 @@ export default function VacasScreen() {
           {
             text: 'Ver Dashboard',
             onPress: () => {
-              // ANIMAÇÃO DE SAÍDA
+              // ANIMAÇÃO DE SAÍDA - SÓ AQUI VAI PRA DASHBOARD!
               Animated.timing(fadeAnim, {
                 toValue: 0,
                 duration: 300,
                 useNativeDriver: true,
               }).start(() => {
-                router.push('/');
+                router.push('/');  // 👈 APENAS AQUI!
               });
             }
           },
           {
             text: 'Continuar',
-            style: 'cancel'
+            style: 'cancel'  // 👈 FICA NA TELA DE VACAS
           }
         ]
       );
@@ -308,7 +308,7 @@ export default function VacasScreen() {
                       toValue: 0,
                       duration: 300,
                       useNativeDriver: true,
-                    }).start(() => router.back());
+                    });
                   }}
                 >
                   <Ionicons name="arrow-back" size={24} color="#4b5563" />

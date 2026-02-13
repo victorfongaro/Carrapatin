@@ -15,9 +15,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { salvarFotoVaca } from '../../firebase/vacasService'; // 👈 IMPORTANTE!
+import { salvarFotoVaca } from '../../firebase/vacasService';
 
 const { width, height } = Dimensions.get('window');
+const fazendaId = "minha-fazenda-001";
 
 export default function CameraScreen() {
   const { posicao, vacaId, vacaNome } = useLocalSearchParams<{
@@ -30,7 +31,6 @@ export default function CameraScreen() {
   const [fotoTirada, setFotoTirada] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const cameraRef = useRef<CameraView>(null);
-  const fazendaId = "minha-fazenda-001";
   
   // ANIMAÇÕES
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -77,7 +77,7 @@ export default function CameraScreen() {
     }
   };
 
-  // ✅ FUNÇÃO CORRIGIDA - AGORA SALVA A FOTO E VOLTA CORRETAMENTE!
+  // ✅ FUNÇÃO CORRIGIDA - Salva foto, reinicia câmera e NÃO volta pra dashboard!
   const confirmarFoto = async () => {
     if (!fotoTirada || !posicao || !vacaId) return;
     
@@ -92,8 +92,12 @@ export default function CameraScreen() {
         fotoTirada
       );
       
-      // 2. VOLTA APENAS UMA TELA (para vacas/index)
-      router.back();
+      // 2. REINICIA A CÂMERA (limpa a foto tirada)
+      setFotoTirada(null);
+      router.navigate('/vacas'); // Volta para a tela de vacas, que recarrega os dados e mostra a foto atualizada
+      
+      // 3. NÃO VOLTA PRA DASHBOARD! Fica na câmera pronta pra próxima foto
+      // router.back() foi REMOVIDO!
       
     } catch (error) {
       console.error('Erro ao salvar foto:', error);
@@ -245,7 +249,7 @@ export default function CameraScreen() {
           <BlurView intensity={90} tint="dark" style={styles.previewHeader}>
             <TouchableOpacity 
               style={styles.previewBackButton}
-              onPress={() => router.back()}
+              onPress={tirarOutraFoto}
             >
               <Ionicons name="close" size={28} color="white" />
             </TouchableOpacity>
@@ -279,7 +283,7 @@ export default function CameraScreen() {
               >
                 <Ionicons name={isSaving ? "sync" : "checkmark"} size={24} color="white" />
                 <Text style={styles.previewActionText}>
-                  {isSaving ? 'Salvando...' : 'Usar foto'}
+                  {isSaving ? 'Salvando...' : 'Enviar foto'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -290,7 +294,7 @@ export default function CameraScreen() {
   );
 }
 
-// ... (mantenha todos os styles iguais)
+// Mantenha todos os styles iguais ao seu arquivo original
 const styles = StyleSheet.create({
   container: {
     flex: 1,
