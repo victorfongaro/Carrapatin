@@ -1,294 +1,531 @@
-import { Feather } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import { router, useLocalSearchParams } from "expo-router";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
+  Animated,
+  Dimensions,
   Image,
-  ScrollView,
+  StatusBar,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  View,
-} from "react-native";
-import { db } from "../../firebase/config";
-import { CameraVacasProps, ResultadoAnalise, Vaca } from "../../types";
+  View
+} from 'react-native';
 
-export default function CameraVacas({
-  risco,
-  onRiscoChange,
-}: CameraVacasProps) {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const [vaca, setVaca] = useState<Vaca | null>(null);
-  const [fotos, setFotos] = useState<string[]>([]);
-  const [periodo, setPeriodo] = useState<"manha" | "tarde">("manha");
-  const [etapa, setEtapa] = useState<"camera" | "analise">("camera");
-  const [analisando, setAnalisando] = useState(false);
-  const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
-  const fazendaId = "minha-fazenda-001";
+const { width, height } = Dimensions.get('window');
+
+export default function CameraScreen() {
+  const { posicao, vacaId, vacaNome } = useLocalSearchParams<{
+    posicao: string;
+    vacaId: string;
+    vacaNome: string;
+  }>();
+  
+  const [permission, requestPermission] = useCameraPermissions();
+  const [fotoTirada, setFotoTirada] = useState<string | null>(null);
+  const cameraRef = useRef<CameraView>(null);
+  
+  // ANIMAÇÕES
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scanAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    carregarVaca();
-    // Determinar período
-    const hora = new Date().getHours();
-    setPeriodo(hora < 12 ? "manha" : "tarde");
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Animação do scan
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, []);
 
-  const carregarVaca = async () => {
-    const docRef = doc(db, "fazendas", fazendaId, "dados", "vacas");
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const vacaEncontrada = docSnap
-        .data()
-        .vacas.find((v: Vaca) => v.id === id);
-      setVaca(vacaEncontrada);
-    }
-  };
-
   const tirarFoto = async () => {
-    if (fotos.length >= 3) {
-      Alert.alert("Limite atingido", "Você já tirou 3 fotos");
-      return;
-    }
-
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permissão negada", "Precisamos de acesso à câmera");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setFotos([...fotos, result.assets[0].uri]);
-    }
-  };
-
-  const analisarFotos = async () => {
-    setEtapa("analise");
-    setAnalisando(true);
-
-    // IA FAKE - Loading de 3 segundos
-    setTimeout(() => {
-      const resultadoFake: ResultadoAnalise = {
-        larvas: Math.floor(Math.random() * 30) + 10,
-        ninfas: Math.floor(Math.random() * 20) + 5,
-        carrapatos: Math.floor(Math.random() * 15) + 3,
-      };
-
-      setResultado(resultadoFake);
-      setAnalisando(false);
-
-      // Salvar no Firebase
-      salvarResultado(resultadoFake);
-    }, 3000);
-  };
-
-  const salvarResultado = async (resultadoFake: ResultadoAnalise) => {
-    const docRef = doc(db, "fazendas", fazendaId, "dados", "vacas");
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const vacas = docSnap.data().vacas;
-      const novasVacas = vacas.map((v: Vaca) => {
-        if (v.id === id) {
-          const fotosAtualizadas = {
-            ...v.fotos,
-            [periodo]: [...(v.fotos[periodo] || []), ...fotos],
-          };
-
-          return {
-            ...v,
-            fotos: fotosAtualizadas,
-            carrapatosDetectados: resultadoFake.carrapatos,
-            ultimaAnalise: new Date(),
-          };
-        }
-        return v;
+    if (cameraRef.current) {
+      const foto = await cameraRef.current.takePictureAsync({
+        quality: 0.8,
+        base64: true,
       });
-
-      await setDoc(docRef, { vacas: novasVacas }, { merge: true });
-
-      // Atualizar risco global da fazenda
-      const totalCarrapatos = novasVacas.reduce(
-        (acc: number, v: Vaca) => acc + (v.carrapatosDetectados || 0),
-        0,
-      );
-      const novoRiscoBase = Math.min(100, totalCarrapatos * 2);
-      onRiscoChange(novoRiscoBase);
+      setFotoTirada(foto.uri);
     }
   };
 
-  if (!vaca) {
+  const confirmarFoto = () => {
+    // Volta para tela de vacas com a foto
+    router.back();
+    // Aqui você salva a foto no estado global/context
+  };
+
+  const tirarOutraFoto = () => {
+    setFotoTirada(null);
+  };
+
+  if (!permission) {
+    return <View style={styles.container} />;
+  }
+
+  if (!permission.granted) {
     return (
-      <View className="flex-1 justify-center items-center">
-        <Text className="text-gray-500">Carregando...</Text>
-      </View>
+      <LinearGradient colors={['#0f766e', '#0d9488']} style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.permissionContainer}>
+          <View style={styles.permissionIcon}>
+            <Ionicons name="camera" size={48} color="white" />
+          </View>
+          <Text style={styles.permissionTitle}>Precisamos da sua câmera</Text>
+          <Text style={styles.permissionText}>
+            Para analisar os carrapatos nas vacas, precisamos acessar sua câmera
+          </Text>
+          <TouchableOpacity 
+            style={styles.permissionButton}
+            onPress={requestPermission}
+          >
+            <Text style={styles.permissionButtonText}>Permitir acesso</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
     );
   }
 
+  // Nomes das posições
+  const posicaoInfo = {
+    esquerda: { 
+      nome: 'Lateral Esquerda', 
+      icon: 'arrow-back-circle',
+      cor: '#3b82f6',
+      desc: 'Posicione a câmera no lado esquerdo do pescoço'
+    },
+    direita: { 
+      nome: 'Lateral Direita', 
+      icon: 'arrow-forward-circle',
+      cor: '#3b82f6',
+      desc: 'Posicione a câmera no lado direito do pescoço'
+    },
+    entrePerdas: { 
+      nome: 'Entre Pernas', 
+      icon: 'remove-circle',
+      cor: '#8b5cf6',
+      desc: 'Posicione a câmera entre as pernas dianteiras'
+    },
+  }[posicao] || { nome: 'Câmera', icon: 'camera', cor: '#059669', desc: '' };
+
   return (
-    <View className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-gray-200">
-        <TouchableOpacity onPress={() => router.back()} className="mr-3">
-          <Feather name="arrow-left" size={24} color="#374151" />
-        </TouchableOpacity>
-        <View>
-          <Text className="text-xl font-bold">{vaca.nome}</Text>
-          <Text className="text-xs text-gray-500">
-            {periodo === "manha"
-              ? "🌅 Ordenha da manhã"
-              : "🌇 Ordenha da tarde"}
-          </Text>
-        </View>
-      </View>
-
-      {etapa === "camera" ? (
-        <ScrollView className="flex-1 p-4">
-          <Text className="text-sm text-gray-600 mb-4">
-            Tire 3 fotos do úbere para análise:
-          </Text>
-
-          {/* Grid de fotos */}
-          <View className="flex-row flex-wrap justify-between">
-            {[0, 1, 2].map((index) => (
-              <View
-                key={index}
-                className="w-[32%] aspect-square bg-gray-100 rounded-lg overflow-hidden"
-              >
-                {fotos[index] ? (
-                  <Image
-                    source={{ uri: fotos[index] }}
-                    className="w-full h-full"
-                  />
-                ) : (
-                  <View className="flex-1 items-center justify-center">
-                    <Feather name="camera" size={32} color="#9ca3af" />
-                  </View>
-                )}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {!fotoTirada ? (
+        <>
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFillObject}
+            facing="back"
+            autofocus="on"
+            flash="auto"
+          />
+          
+          {/* OVERLAY COM MÁSCARA */}
+          <View style={styles.overlay}>
+            {/* ÁREA DE SCAN */}
+            <View style={styles.scanArea}>
+              <Animated.View 
+                style={[
+                  styles.scanLine,
+                  {
+                    transform: [{
+                      translateY: scanAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-100, 100]
+                      })
+                    }]
+                  }
+                ]}
+              />
+              
+              <View style={styles.cornerTopLeft} />
+              <View style={styles.cornerTopRight} />
+              <View style={styles.cornerBottomLeft} />
+              <View style={styles.cornerBottomRight} />
+              
+              <View style={styles.positionIndicator}>
+                <Ionicons name={posicaoInfo.icon as any} size={32} color="white" />
+                <Text style={styles.positionText}>{posicaoInfo.nome}</Text>
               </View>
-            ))}
-          </View>
+            </View>
 
-          {/* Botões */}
-          <View className="mt-6 space-y-3">
-            {fotos.length < 3 && (
-              <TouchableOpacity
+            {/* INFORMAÇÕES DA VACA */}
+            <BlurView intensity={80} tint="dark" style={styles.vacaInfoBar}>
+              <View style={styles.vacaInfoContent}>
+                <View style={styles.vacaIcon}>
+                    <Ionicons name="paw" size={20} color="white" />
+                  </View>
+                <View>
+                  <Text style={styles.vacaNome}>{vacaNome}</Text>
+                  <Text style={styles.vacaBrinco}>ID: {vacaId}</Text>
+                </View>
+              </View>
+            </BlurView>
+
+            {/* INSTRUÇÕES */}
+            <Animated.View 
+              style={[
+                styles.instructions,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }]
+                }
+              ]}
+            >
+              <Text style={styles.instructionsText}>
+                {posicaoInfo.desc}
+              </Text>
+            </Animated.View>
+
+            {/* BOTÃO DE CAPTURA */}
+            <View style={styles.captureContainer}>
+              <TouchableOpacity 
+                style={styles.captureButton}
                 onPress={tirarFoto}
-                className="bg-blue-600 py-4 rounded-xl flex-row items-center justify-center"
               >
-                <Feather name="camera" size={20} color="white" />
-                <Text className="text-white font-semibold ml-2">
-                  Tirar Foto ({fotos.length}/3)
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {fotos.length === 3 && (
-              <TouchableOpacity
-                onPress={analisarFotos}
-                className="bg-emerald-600 py-4 rounded-xl flex-row items-center justify-center"
-              >
-                <Feather name="cpu" size={20} color="white" />
-                <Text className="text-white font-semibold ml-2">
-                  Analisar Fotos
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </ScrollView>
-      ) : (
-        <View className="flex-1 p-4 items-center justify-center">
-          {analisando ? (
-            <>
-              <View className="items-center">
-                <Text className="text-6xl mb-4">🔬</Text>
-                <Text className="text-2xl font-bold mb-2">
-                  Analisando imagens...
-                </Text>
-                <Text className="text-gray-500">
-                  IA processando fotos do úbere
-                </Text>
-
-                {/* Barra de progresso */}
-                <View className="w-64 h-2 bg-gray-200 rounded-full mt-6 overflow-hidden">
-                  <View
-                    className="h-full bg-emerald-600"
-                    style={{
-                      width: "70%",
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                    }}
-                  />
-                </View>
-              </View>
-            </>
-          ) : (
-            resultado && (
-              <ScrollView className="w-full">
-                <View className="items-center mb-6">
-                  <Text className="text-6xl mb-4">✅</Text>
-                  <Text className="text-2xl font-bold">Análise Concluída!</Text>
-                </View>
-
-                {/* Resultados */}
-                <View className="flex-row justify-around mb-6">
-                  <View className="bg-orange-50 p-4 rounded-xl items-center">
-                    <Text className="text-2xl">🥚</Text>
-                    <Text className="text-2xl font-bold text-orange-700">
-                      {resultado.larvas}
-                    </Text>
-                    <Text className="text-xs text-gray-600">Larvas</Text>
-                  </View>
-                  <View className="bg-yellow-50 p-4 rounded-xl items-center">
-                    <Text className="text-2xl">🐛</Text>
-                    <Text className="text-2xl font-bold text-yellow-700">
-                      {resultado.ninfas}
-                    </Text>
-                    <Text className="text-xs text-gray-600">Ninfas</Text>
-                  </View>
-                  <View className="bg-red-50 p-4 rounded-xl items-center">
-                    <Text className="text-2xl">🕷️</Text>
-                    <Text className="text-2xl font-bold text-red-700">
-                      {resultado.carrapatos}
-                    </Text>
-                    <Text className="text-xs text-gray-600">Carrapatos</Text>
-                  </View>
-                </View>
-
-                {/* Alerta */}
-                {resultado.carrapatos > 10 && (
-                  <View className="bg-red-100 border-l-4 border-red-500 p-4 rounded mb-6">
-                    <Text className="font-bold text-red-800">
-                      ⚠️ Alerta de Infestação
-                    </Text>
-                    <Text className="text-sm text-red-600">
-                      Alta carga de carrapatos detectada!
-                    </Text>
-                  </View>
-                )}
-
-                <TouchableOpacity
-                  onPress={() => router.back()}
-                  className="bg-emerald-600 py-4 rounded-xl"
+                <LinearGradient
+                  colors={['#ffffff', '#f0f0f0']}
+                  style={styles.captureGradient}
                 >
-                  <Text className="text-white text-center font-semibold">
-                    Voltar para lista
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )
-          )}
-        </View>
+                  <View style={styles.captureInner} />
+                </LinearGradient>
+              </TouchableOpacity>
+              <Text style={styles.captureText}>TIRAR FOTO</Text>
+            </View>
+          </View>
+        </>
+      ) : (
+        /* PREVIEW DA FOTO */
+        <Animated.View style={[styles.previewContainer, { opacity: fadeAnim }]}>
+          <Image source={{ uri: fotoTirada }} style={styles.previewImage} />
+          
+          <BlurView intensity={90} tint="dark" style={styles.previewHeader}>
+            <TouchableOpacity 
+              style={styles.previewBackButton}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="close" size={28} color="white" />
+            </TouchableOpacity>
+            <Text style={styles.previewTitle}>Visualizar Foto</Text>
+            <View style={{ width: 40 }} />
+          </BlurView>
+
+          <View style={styles.previewActions}>
+            <TouchableOpacity 
+              style={styles.previewActionButton}
+              onPress={tirarOutraFoto}
+            >
+              <LinearGradient
+                colors={['#4b5563', '#374151']}
+                style={styles.previewActionGradient}
+              >
+                <Ionicons name="refresh" size={24} color="white" />
+                <Text style={styles.previewActionText}>Tirar outra</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.previewActionButton}
+              onPress={confirmarFoto}
+            >
+              <LinearGradient
+                colors={['#059669', '#047857']}
+                style={styles.previewActionGradient}
+              >
+                <Ionicons name="checkmark" size={24} color="white" />
+                <Text style={styles.previewActionText}>Usar foto</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  permissionIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  permissionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 12,
+  },
+  permissionText: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  permissionButton: {
+    backgroundColor: 'white',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 100,
+  },
+  permissionButtonText: {
+    color: '#0f766e',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'space-between',
+  },
+  scanArea: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  scanLine: {
+    position: 'absolute',
+    width: width * 0.7,
+    height: 2,
+    backgroundColor: '#10b981',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  cornerTopLeft: {
+    position: 'absolute',
+    top: '30%',
+    left: '15%',
+    width: 30,
+    height: 30,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderColor: 'white',
+  },
+  cornerTopRight: {
+    position: 'absolute',
+    top: '30%',
+    right: '15%',
+    width: 30,
+    height: 30,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderColor: 'white',
+  },
+  cornerBottomLeft: {
+    position: 'absolute',
+    bottom: '30%',
+    left: '15%',
+    width: 30,
+    height: 30,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderColor: 'white',
+  },
+  cornerBottomRight: {
+    position: 'absolute',
+    bottom: '30%',
+    right: '15%',
+    width: 30,
+    height: 30,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderColor: 'white',
+  },
+  positionIndicator: {
+    alignItems: 'center',
+    marginTop: -40,
+  },
+  positionText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginTop: 8,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  vacaInfoBar: {
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    right: 20,
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  vacaInfoContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingHorizontal: 20,
+  },
+  vacaIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  vacaNome: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  vacaBrinco: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+  },
+  instructions: {
+    position: 'absolute',
+    bottom: 120,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+  },
+  instructionsText: {
+    color: 'white',
+    fontSize: 14,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  captureContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  captureGradient: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  captureInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'white',
+  },
+  captureText: {
+    color: 'white',
+    marginTop: 8,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  previewContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  previewImage: {
+    flex: 1,
+    resizeMode: 'cover',
+  },
+  previewHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  previewBackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  previewActions: {
+    position: 'absolute',
+    bottom: 40,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  previewActionButton: {
+    flex: 1,
+    marginHorizontal: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  previewActionGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  previewActionText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+});
