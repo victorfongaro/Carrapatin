@@ -11,32 +11,50 @@ import {
   StatusBar,
   Text,
   TouchableOpacity,
-  View,
-  StyleSheet
+  View
 } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { Velocimetro } from '../components/Velocimetro';
 import { Fazenda } from '../types/index';
-import {styles} from './styles/styles';
+import { styles } from './styles/styles';
+import { 
+  carregarRiscoFazenda, 
+  atualizarRisco,
+  carregarProdutoresProximos,
+  carregarDadosClimaticos,
+  calcularRiscoClimatico,
+  inicializarDadosTeste
+} from '../firebase/services';
+
 const { width } = Dimensions.get('window');
 
-export default function Dashboard({ risco = 78, onRiscoChange = (value: number) => {} }) {
+export default function Dashboard({ risco: riscoProp = 78, onRiscoChange = (value: number) => {} }) {
   const [fazendas, setFazendas] = useState<Fazenda[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFazenda, setSelectedFazenda] = useState<Fazenda | null>(null);
-  const [mapRegion] = useState({
-    latitude: -21.244,
-    longitude: -45.147,
-    latitudeDelta: 0.1,
-    longitudeDelta: 0.1,
+  const [risco, setRisco] = useState(riscoProp);
+  const [dadosClimaticos, setDadosClimaticos] = useState({
+    temperatura: 28,
+    umidade: 85,
+    condicao: 'Ensolarado',
+    precipitacao: 30
   });
+  const [alertaClimatico, setAlertaClimatico] = useState({
+    nivel: 'Médio',
+    cor: '#f59e0b',
+    multiplicador: 1.5,
+    mensagem: 'Condições climáticas favorecem reprodução'
+  });
+  
+  const fazendaId = "minha-fazenda-001";
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
-    carregarFazendas();
+    inicializarDadosTeste(); // Só roda uma vez
+    carregarTodosDados();
     
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -58,65 +76,53 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
     ]).start();
   }, []);
 
-  const carregarFazendas = async () => {
-    setFazendas([
-      { 
-        id: '1', 
-        nome: 'Fazenda Boa Vista', 
-        risco: 78, 
-        latitude: -21.24, 
-        longitude: -45.15,
-        ultimaAtualizacao: '2 min atrás',
-        vacas: 145,
-        area: '320 ha'
-      },
-      { 
-        id: '2', 
-        nome: 'Sítio Esperança', 
-        risco: 92, 
-        latitude: -21.25, 
-        longitude: -45.16,
-        ultimaAtualizacao: '5 min atrás',
-        vacas: 78,
-        area: '180 ha'
-      },
-      { 
-        id: '3', 
-        nome: 'Fazenda Santa Fé', 
-        risco: 34, 
-        latitude: -21.23, 
-        longitude: -45.14,
-        ultimaAtualizacao: '15 min atrás',
-        vacas: 210,
-        area: '450 ha'
-      },
-      { 
-        id: '4', 
-        nome: 'Rancho Alegre', 
-        risco: 45, 
-        latitude: -21.22, 
-        longitude: -45.13,
-        ultimaAtualizacao: '1 min atrás',
-        vacas: 92,
-        area: '200 ha'
-      },
-      { 
-        id: '5', 
-        nome: 'Fazenda São José', 
-        risco: 67, 
-        latitude: -21.26, 
-        longitude: -45.14,
-        ultimaAtualizacao: '8 min atrás',
-        vacas: 167,
-        area: '380 ha'
-      },
-    ]);
+  const carregarTodosDados = async () => {
+    setRefreshing(true);
+    
+    // 1. Carrega risco do Firebase
+    const dadosRisco = await carregarRiscoFazenda(fazendaId);
+    setRisco(dadosRisco.risco);
+    
+    // 2. Carrega produtores do Firebase
+    const produtores = await carregarProdutoresProximos(-21.244, -45.147);
+    setFazendas(produtores);
+    
+    // 3. Carrega dados climáticos (mock - depois API real)
+    const clima = await carregarDadosClimaticos();
+    setDadosClimaticos({
+      temperatura: clima.temperatura,
+      umidade: clima.umidade,
+      condicao: clima.condicao,
+      precipitacao: clima.precipitacao
+    });
+    
+    // 4. Calcula alerta climático
+    const alerta = calcularRiscoClimatico(clima.temperatura, clima.umidade);
+    setAlertaClimatico({
+      nivel: alerta.nivel,
+      cor: alerta.cor,
+      multiplicador: alerta.multiplicador,
+      mensagem: alerta.mensagem
+    });
+    
+    setRefreshing(false);
   };
 
   const onRefresh = async () => {
-    setRefreshing(true);
-    await carregarFazendas();
-    setRefreshing(false);
+    await carregarTodosDados();
+  };
+
+  const handleImportarRisco = async (fazenda: Fazenda) => {
+    // Calcula novo risco baseado na fazenda selecionada
+    const novoRisco = Math.min(100, Math.round(risco + fazenda.risco * 0.15));
+    
+    // Atualiza no Firebase
+    await atualizarRisco(fazendaId, novoRisco);
+    
+    // Atualiza estado local
+    setRisco(novoRisco);
+    onRiscoChange(novoRisco);
+    setSelectedFazenda(null);
   };
 
   const getMarkerColor = (risco: number) => {
@@ -154,9 +160,11 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
   };
 
   const getWeatherIcon = () => {
-    const hour = new Date().getHours();
-    if (hour >= 6 && hour < 18) return 'sunny';
-    return 'moon';
+    const clima = dadosClimaticos.condicao;
+    if (clima.includes('Chuva')) return 'rainy';
+    if (clima.includes('Nublado')) return 'cloudy';
+    if (clima.includes('Ensolarado')) return 'sunny';
+    return 'partly-sunny';
   };
 
   return (
@@ -175,7 +183,7 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
           />
         }
       >
-        {/* HEADER */}
+        {/* HEADER - IGUAL, SÓ MUDA O NOME */}
         <LinearGradient
           colors={['#ffffff', '#f9fafb']}
           style={styles.headerGradient}
@@ -220,7 +228,7 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
           </View>
         </LinearGradient>
 
-        {/* CARD DE BOAS-VINDAS */}
+        {/* CARD DE BOAS-VINDAS - AGORA COM DADOS CLIMÁTICOS REAIS */}
         <Animated.View 
           style={[
             styles.welcomeCard,
@@ -248,19 +256,23 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
                   <View style={styles.weatherBadge}>
                     <Ionicons name={getWeatherIcon()} size={18} color="white" />
                     <Text style={styles.weatherText}>
-                      28°C • Umidade 85%
+                      {dadosClimaticos.temperatura}°C • Umidade {dadosClimaticos.umidade}%
                     </Text>
                   </View>
                 </View>
               </View>
               <View style={styles.weatherIcon}>
-                <MaterialCommunityIcons name="weather-pouring" size={32} color="white" />
+                <MaterialCommunityIcons 
+                  name={dadosClimaticos.precipitacao > 50 ? "weather-pouring" : "weather-partly-rainy"} 
+                  size={32} 
+                  color="white" 
+                />
               </View>
             </View>
           </LinearGradient>
         </Animated.View>
 
-        {/* VELOCÍMETRO */}
+        {/* VELOCÍMETRO - AGORA COM RISCO DO FIREBASE */}
         <Animated.View 
           style={[
             styles.speedometerCard,
@@ -310,12 +322,12 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
                 <Velocimetro risco={risco} size="lg" />
               </View>
 
-              {/* STATS */}
+              {/* STATS - AGORA COM DADOS REAIS */}
               <View style={styles.statsContainer}>
                 {[
                   { icon: 'map-pin', label: 'Fazendas', value: fazendas.length, color: '#3b82f6', bg: '#eff6ff' },
-                  { icon: 'thermometer', label: 'Temperatura', value: '28°C', color: '#f97316', bg: '#fff7ed' },
-                  { icon: 'droplet', label: 'Umidade', value: '85%', color: '#3b82f6', bg: '#eff6ff' },
+                  { icon: 'thermometer', label: 'Temperatura', value: `${dadosClimaticos.temperatura}°C`, color: '#f97316', bg: '#fff7ed' },
+                  { icon: 'droplet', label: 'Umidade', value: `${dadosClimaticos.umidade}%`, color: '#3b82f6', bg: '#eff6ff' },
                 ].map((item, index) => (
                   <View key={index} style={styles.statItem}>
                     <View 
@@ -335,7 +347,7 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
           </View>
         </Animated.View>
 
-        {/* ALERTA CLIMÁTICO */}
+        {/* ALERTA CLIMÁTICO - AGORA DINÂMICO E FUNCIONAL! */}
         <Animated.View 
           style={[
             styles.alertCard,
@@ -343,26 +355,37 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
           ]}
         >
           <LinearGradient
-            colors={['#1e40af', '#2563eb', '#3b82f6']}
+            colors={[
+              alertaClimatico.cor === '#ef4444' ? '#991b1b' : 
+              alertaClimatico.cor === '#f97316' ? '#9a3412' : 
+              alertaClimatico.cor === '#f59e0b' ? '#854d0e' : '#0f766e',
+              alertaClimatico.cor,
+              alertaClimatico.cor
+            ]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.alertGradient}
           >
             <View style={styles.alertRow}>
-              <View style={styles.alertIcon}>
-                <Ionicons name="warning" size={32} color="white" />
+              <View style={[styles.alertIcon, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                <Ionicons 
+                  name={alertaClimatico.nivel === 'Crítico' ? 'warning' : 
+                        alertaClimatico.nivel === 'Alto' ? 'alert' : 'information-circle'} 
+                  size={32} 
+                  color="white" 
+                />
               </View>
               <View style={styles.alertContent}>
                 <Text style={styles.alertTitle}>
-                  🚨 Alerta de Proliferação
+                  🚨 Alerta de Proliferação - {alertaClimatico.nivel}
                 </Text>
                 <Text style={styles.alertDescription}>
-                  Chuva prevista + calor intenso = risco 3.5x maior
+                  {alertaClimatico.mensagem}
                 </Text>
                 <View style={styles.alertBadgeContainer}>
-                  <View style={styles.alertBadge}>
+                  <View style={[styles.alertBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
                     <Text style={styles.alertBadgeText}>
-                      Próximas 48h • Crítico
+                      {dadosClimaticos.temperatura}°C • {dadosClimaticos.umidade}% • Multiplicador {alertaClimatico.multiplicador}x
                     </Text>
                   </View>
                 </View>
@@ -371,7 +394,7 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
           </LinearGradient>
         </Animated.View>
 
-        {/* MAPA */}
+        {/* MAPA - AGORA COM PRODUTORES DO FIREBASE */}
         <Animated.View 
           style={[
             styles.mapCard,
@@ -404,7 +427,12 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
                 <MapView
                   provider={PROVIDER_GOOGLE}
                   style={styles.map}
-                  initialRegion={mapRegion}
+                  initialRegion={{
+                    latitude: -21.244,
+                    longitude: -45.147,
+                    latitudeDelta: 0.1,
+                    longitudeDelta: 0.1,
+                  }}
                 >
                   {fazendas.map((fazenda) => (
                     <Marker
@@ -439,7 +467,7 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
                 </MapView>
               </View>
 
-              {/* CARD DA FAZENDA SELECIONADA */}
+              {/* CARD DA FAZENDA SELECIONADA - AGORA IMPORTANDO PARA FIREBASE */}
               {selectedFazenda && (
                 <View style={styles.selectedFarmCard}>
                   <View style={styles.selectedFarmHeader}>
@@ -510,13 +538,7 @@ export default function Dashboard({ risco = 78, onRiscoChange = (value: number) 
 
                   <TouchableOpacity 
                     style={styles.importButton}
-                    onPress={() => {
-                      if (onRiscoChange) {
-                        const novoRisco = Math.min(100, Math.round(risco + selectedFazenda.risco * 0.15));
-                        onRiscoChange(novoRisco);
-                      }
-                      setSelectedFazenda(null);
-                    }}
+                    onPress={() => handleImportarRisco(selectedFazenda)}
                   >
                     <Feather name="download-cloud" size={18} color="white" />
                     <Text style={styles.importButtonText}>
