@@ -1,4 +1,4 @@
-import { Feather, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
 import { router, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { doc, getDoc } from "firebase/firestore";
@@ -59,7 +59,7 @@ export default function RootLayout() {
                 <MaterialCommunityIcons name="gauge" size={26} color={color} /> :
                 <MaterialCommunityIcons name="gauge-low" size={26} color={color} />;
             } else if (route.name === 'vacas/index') {
-              return <FontAwesome5 name="cow" size={22} color={color} />;
+              return <MaterialCommunityIcons name="cow" size={24} color={color} />;
             } else if (route.name === 'historico/index') {
               return <Feather name="calendar" size={24} color={color} />;
             }
@@ -159,7 +159,7 @@ export default function RootLayout() {
           name="vacas/camera"
           options={{
             title: "Câmera",
-            href: null,
+            href: null,  // 👈 MUDE DE tabBarButton: () => null PARA href: null
             headerShown: true,
           }}
         />

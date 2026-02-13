@@ -1,9 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated } from 'react-native';
-import Svg, { 
-  Path, Circle, G, Line, 
-  Text as SvgText, Defs, LinearGradient, Stop 
-} from 'react-native-svg';
+import React from 'react';
+import { View, Text } from 'react-native';
+import Svg, { Path, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 interface VelocimetroProps {
   risco: number;
@@ -11,27 +8,22 @@ interface VelocimetroProps {
 }
 
 export function Velocimetro({ risco, size = 'md' }: VelocimetroProps) {
-  const animatedValue = useRef(new Animated.Value(0)).current;
   const valorNormalizado = Math.min(100, Math.max(0, risco));
   
-  useEffect(() => {
-    Animated.spring(animatedValue, {
-      toValue: valorNormalizado,
-      useNativeDriver: true,
-      tension: 30,
-      friction: 8,
-    }).start();
-  }, [valorNormalizado]);
-
   const dimensoes = {
     sm: { width: 160, height: 100, fontSize: 24, strokeWidth: 12, radius: 70 },
     md: { width: 240, height: 140, fontSize: 32, strokeWidth: 16, radius: 100 },
     lg: { width: 320, height: 180, fontSize: 40, strokeWidth: 20, radius: 130 }
   }[size];
 
+  const angle = (valorNormalizado / 100) * 180;
+  
   const centerX = dimensoes.width / 2;
   const centerY = dimensoes.height - 10;
   const radius = dimensoes.radius;
+  
+  const needleX = centerX + radius * Math.cos((180 - angle) * (Math.PI / 180));
+  const needleY = centerY - radius * Math.sin((180 - angle) * (Math.PI / 180));
 
   const getCor = () => {
     if (valorNormalizado < 30) return '#22c55e';
@@ -49,193 +41,72 @@ export function Velocimetro({ risco, size = 'md' }: VelocimetroProps) {
 
   const classificacao = getClassificacao();
 
-  // Calcular posição do ponteiro baseado no valor animado
-  const angle = animatedValue.interpolate({
-    inputRange: [0, 100],
-    outputRange: [180, 0]
-  });
-
-  const needleX = animatedValue.interpolate({
-    inputRange: [0, 100],
-    outputRange: [
-      centerX + radius * Math.cos(180 * (Math.PI / 180)),
-      centerX + radius * Math.cos(0)
-    ]
-  });
-
-  const needleY = animatedValue.interpolate({
-    inputRange: [0, 100],
-    outputRange: [
-      centerY - radius * Math.sin(180 * (Math.PI / 180)),
-      centerY - radius * Math.sin(0)
-    ]
-  });
-
   return (
     <View className="items-center">
       <Svg width={dimensoes.width} height={dimensoes.height}>
-        <Defs>
-          <LinearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <Stop offset="0%" stopColor={getCor()} />
-            <Stop offset="100%" stopColor={getCor() + '80'} />
-          </LinearGradient>
-        </Defs>
-        
-        {/* Fundo - Arco cinza */}
+        {/* Fundo */}
         <Path
           d={`M ${centerX - radius}, ${centerY} A ${radius} ${radius} 0 0 1 ${centerX + radius}, ${centerY}`}
           fill="none"
-          stroke="#f1f5f9"
+          stroke="#e5e7eb"
           strokeWidth={dimensoes.strokeWidth}
           strokeLinecap="round"
         />
         
-        {/* Arco colorido animado */}
-        <AnimatedPath
+        {/* Arco colorido */}
+        <Path
           d={`M ${centerX - radius}, ${centerY} A ${radius} ${radius} 0 0 1 ${centerX + radius}, ${centerY}`}
           fill="none"
-          stroke="url(#grad)"
+          stroke={getCor()}
           strokeWidth={dimensoes.strokeWidth}
           strokeLinecap="round"
-          strokeDasharray={`${animatedValue.interpolate({
-            inputRange: [0, 100],
-            outputRange: [0, Math.PI * radius]
-          })} ${Math.PI * radius}`}
+          strokeDasharray={`${(angle / 180) * Math.PI * radius} ${Math.PI * radius}`}
           strokeDashoffset={Math.PI * radius}
         />
         
-        {/* Marcadores de referência */}
-        {[0, 25, 50, 75, 100].map((value, index) => {
-          const ang = (value / 100) * 180;
-          const x = centerX + (radius - 15) * Math.cos((180 - ang) * (Math.PI / 180));
-          const y = centerY - (radius - 15) * Math.sin((180 - ang) * (Math.PI / 180));
-          
-          let color = '#94a3b8';
-          let size = value % 25 === 0 ? 4 : 2;
-          
-          return (
-            <Circle
-              key={index}
-              cx={x}
-              cy={y}
-              r={size}
-              fill={color}
-            />
-          );
-        })}
+        {/* Marcadores */}
+        <SvgText x={centerX - radius - 5} y={centerY - 5} fontSize="12" fill="#6b7280" textAnchor="middle">0</SvgText>
+        <SvgText x={centerX} y={25} fontSize="12" fill="#6b7280" textAnchor="middle">50</SvgText>
+        <SvgText x={centerX + radius + 5} y={centerY - 5} fontSize="12" fill="#6b7280" textAnchor="middle">100</SvgText>
         
-        {/* Marcadores de texto */}
-        <SvgText 
-          x={centerX - radius - 5} 
-          y={centerY - 5} 
-          fontSize="12" 
-          fill="#64748b"
-          fontWeight="600"
-          textAnchor="middle"
-        >
-          0
-        </SvgText>
-        <SvgText 
-          x={centerX} 
-          y={25} 
-          fontSize="12" 
-          fill="#64748b"
-          fontWeight="600"
-          textAnchor="middle"
-        >
-          50
-        </SvgText>
-        <SvgText 
-          x={centerX + radius + 5} 
-          y={centerY - 5} 
-          fontSize="12" 
-          fill="#64748b"
-          fontWeight="600"
-          textAnchor="middle"
-        >
-          100
-        </SvgText>
-        
-        {/* Ponteiro animado */}
-        <AnimatedLine
-          x1={centerX}
-          y1={centerY}
-          x2={needleX}
-          y2={needleY}
-          stroke="#0f172a"
-          strokeWidth="4"
-          strokeLinecap="round"
+        {/* Ponteiro */}
+        <Line
+          x1={centerX} y1={centerY} x2={needleX} y2={needleY}
+          stroke="#1f2937" strokeWidth="4" strokeLinecap="round"
         />
         
         {/* Círculo central */}
-        <Circle
-          cx={centerX}
-          cy={centerY}
-          r="14"
-          fill="#0f172a"
-          stroke="white"
-          strokeWidth="3"
-        />
-        <Circle
-          cx={centerX}
-          cy={centerY}
-          r="6"
-          fill="white"
-        />
+        <Circle cx={centerX} cy={centerY} r="12" fill="#1f2937" stroke="white" strokeWidth="3" />
+        <Circle cx={centerX} cy={centerY} r="6" fill="white" />
       </Svg>
       
       {/* Valor numérico */}
       <View className="flex-row items-baseline gap-2 mt-4">
-        <Text style={{ 
-          fontSize: dimensoes.fontSize, 
-          color: getCor(),
-          fontWeight: '800'
-        }}>
+        <Text style={{ fontSize: dimensoes.fontSize, color: getCor(), fontWeight: 'bold' }}>
           {Math.round(valorNormalizado)}%
         </Text>
-        <Text className="text-base text-gray-400 font-medium">
-          risco
-        </Text>
+        <Text className="text-gray-400">risco</Text>
       </View>
       
-      {/* Badge de classificação */}
-      <View 
-        className="px-4 py-2 rounded-full mt-2"
-        style={{ backgroundColor: classificacao.bg }}
-      >
-        <Text style={{ 
-          color: classificacao.color, 
-          fontWeight: '700', 
-          fontSize: 14 
-        }}>
+      {/* Badge */}
+      <View className="px-4 py-2 rounded-full mt-2" style={{ backgroundColor: classificacao.bg }}>
+        <Text style={{ color: classificacao.color, fontWeight: 'bold' }}>
           {classificacao.text}
         </Text>
       </View>
 
-      {/* Barra de progresso */}
-      <View className="w-full mt-6 px-4">
-        <View className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <Animated.View 
+      {/* Barra de progresso SIMPLES (sem animated) */}
+      <View className="w-full mt-4 px-4">
+        <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+          <View 
             className="h-full rounded-full"
             style={{ 
-              width: animatedValue.interpolate({
-                inputRange: [0, 100],
-                outputRange: ['0%', '100%']
-              }),
+              width: `${valorNormalizado}%`,
               backgroundColor: getCor()
             }}
           />
-        </View>
-        <View className="flex-row justify-between mt-1">
-          <Text className="text-xs text-gray-400">0%</Text>
-          <Text className="text-xs text-gray-400">50%</Text>
-          <Text className="text-xs text-gray-400">100%</Text>
         </View>
       </View>
     </View>
   );
 }
-
-// Componente animado
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-const AnimatedLine = Animated.createAnimatedComponent(Line);

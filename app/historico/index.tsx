@@ -16,7 +16,7 @@ interface Mes {
   nivel: string;
 }
 
-export function Historico({
+export default function Historico({
   multiplicador,
   onMultiplicadorChange,
   onRiscoChange,

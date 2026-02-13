@@ -7,7 +7,7 @@ import { db } from '../../firebase/config';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Vaca, ResultadoAnalise, CameraVacasProps } from '../types';
 
-export function CameraVacas({ risco, onRiscoChange }: CameraVacasProps) {
+export default function CameraVacas({ risco, onRiscoChange }: CameraVacasProps) {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [vaca, setVaca] = useState<Vaca | null>(null);
   const [fotos, setFotos] = useState<string[]>([]);
