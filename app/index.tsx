@@ -1,7 +1,6 @@
 import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -20,11 +19,12 @@ import { Velocimetro } from "../components/Velocimetro";
 import {
   atualizarRisco,
   calcularRiscoClimatico,
-  carregarDadosClimaticos,
+  carregarClimaOpenMeteo,
+  carregarDadosUsuario,
   carregarProdutoresProximos,
   carregarRiscoFazenda,
   inicializarDadosTeste,
-} from "../firebase/services"; // ✅ APENAS funções que EXISTEM
+} from "../firebase/services";
 import { styles } from "./styles/styles";
 
 const { width } = Dimensions.get("window");
@@ -36,27 +36,27 @@ export default function Dashboard() {
   const [selectedFazenda, setSelectedFazenda] = useState<any>(null);
   const [risco, setRisco] = useState(78);
   const [loading, setLoading] = useState(true);
-  const [usuarioNome, setUsuarioNome] = useState("João Mendes");
-  const [fazendaNome, setFazendaNome] = useState("Fazenda Boa Vista");
+  const [usuario, setUsuario] = useState({
+    nome: "João Mendes",
+    fazenda: "Fazenda Boa Vista",
+  });
 
   const [localizacao, setLocalizacao] = useState({
     latitude: -21.244,
     longitude: -45.147,
-    cidade: "Lavras, MG",
+    cidade: "Lavras",
   });
 
   const [dadosClimaticos, setDadosClimaticos] = useState({
     temperatura: 28,
-    umidade: 85,
+    umidade: 75,
     condicao: "Ensolarado",
-    vento: 12,
-    precipitacao: 30,
   });
 
   const [alertaClimatico, setAlertaClimatico] = useState({
     nivel: "Médio",
     cor: "#f59e0b",
-    multiplicador: 1.5,
+    multiplicador: 1.8,
     mensagem: "Condições climáticas favorecem reprodução",
   });
 
@@ -97,13 +97,10 @@ export default function Dashboard() {
     setLoading(true);
 
     try {
-      // 1. Inicializa dados de teste (só na primeira vez)
       await inicializarDadosTeste();
-
-      // 2. Carrega localização
+      const dadosUsuario = await carregarDadosUsuario(fazendaId);
+      setUsuario(dadosUsuario);
       await carregarLocalizacaoEClima();
-
-      // 3. Carrega todos os dados
       await carregarTodosDados();
     } catch (error) {
       console.error("Erro ao inicializar app:", error);
@@ -113,7 +110,7 @@ export default function Dashboard() {
   };
 
   // ===========================================
-  // 2. LOCALIZAÇÃO E CLIMA
+  // 2. 🌦️ LOCALIZAÇÃO E CLIMA
   // ===========================================
   const carregarLocalizacaoEClima = async () => {
     try {
@@ -121,39 +118,36 @@ export default function Dashboard() {
 
       if (status === "granted") {
         const location = await Location.getCurrentPositionAsync({});
+        const clima = await carregarClimaOpenMeteo(
+          location.coords.latitude,
+          location.coords.longitude,
+        );
 
-        const [address] = await Location.reverseGeocodeAsync({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
+        setDadosClimaticos({
+          temperatura: clima.temperatura,
+          umidade: clima.umidade,
+          condicao: clima.condicao,
         });
-
-        const cidade = address.city
-          ? `${address.city}, ${address.region}`
-          : `${location.coords.latitude.toFixed(2)}, ${location.coords.longitude.toFixed(2)}`;
 
         setLocalizacao({
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
-          cidade,
+          cidade: clima.cidade,
         });
+
+        const alerta = calcularRiscoClimatico(clima.temperatura, clima.umidade);
+        setAlertaClimatico(alerta);
       }
     } catch (error) {
       console.log("Erro ao carregar localização:", error);
-    }
-
-    // Carrega dados climáticos
-    await carregarClima();
-  };
-
-  const carregarClima = async () => {
-    try {
-      const clima = await carregarDadosClimaticos();
-      setDadosClimaticos(clima);
-
+      const clima = await carregarClimaOpenMeteo(-21.244, -45.147);
+      setDadosClimaticos({
+        temperatura: clima.temperatura,
+        umidade: clima.umidade,
+        condicao: clima.condicao,
+      });
       const alerta = calcularRiscoClimatico(clima.temperatura, clima.umidade);
       setAlertaClimatico(alerta);
-    } catch (error) {
-      console.log("Erro ao carregar clima:", error);
     }
   };
 
@@ -162,32 +156,22 @@ export default function Dashboard() {
   // ===========================================
   const carregarTodosDados = async () => {
     try {
-      // 1. Carrega risco da fazenda
       const dadosRisco = await carregarRiscoFazenda(fazendaId);
       setRisco(dadosRisco.risco);
 
-      // 2. Carrega produtores próximos
       const produtores = await carregarProdutoresProximos(
         localizacao.latitude,
         localizacao.longitude,
       );
       setFazendas(produtores);
-
-      // 3. Pega nome da fazenda atual dos produtores
-      const minhaFazenda = produtores.find((f) => f.id === fazendaId);
-      if (minhaFazenda) {
-        setFazendaNome(minhaFazenda.nome);
-        setUsuarioNome(minhaFazenda.nome.split(" ")[0]);
-      }
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
-      Alert.alert("Erro", "Não foi possível carregar os dados");
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await carregarClima();
+    await carregarLocalizacaoEClima();
     await carregarTodosDados();
     setRefreshing(false);
   };
@@ -197,7 +181,6 @@ export default function Dashboard() {
   // ===========================================
   const handleImportarRisco = async (fazenda: any) => {
     const novoRisco = Math.min(100, Math.round((risco + fazenda.risco) / 2));
-
     const sucesso = await atualizarRisco(fazendaId, novoRisco);
 
     if (sucesso) {
@@ -253,7 +236,9 @@ export default function Dashboard() {
     const condicao = dadosClimaticos.condicao.toLowerCase();
     if (condicao.includes("chuva")) return "rainy";
     if (condicao.includes("nublado")) return "cloudy";
-    if (condicao.includes("ensolarado")) return "sunny";
+    if (condicao.includes("limpo")) return "sunny";
+    if (condicao.includes("nevoeiro")) return "fog";
+    if (condicao.includes("tempestade")) return "thunderstorm";
     return "partly-sunny";
   };
 
@@ -289,50 +274,7 @@ export default function Dashboard() {
           />
         }
       >
-        {/* HEADER */}
-        <LinearGradient
-          colors={["#ffffff", "#f9fafb"]}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerRow}>
-            <Animated.View
-              style={[
-                styles.headerLeft,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateX: slideAnim }],
-                },
-              ]}
-            >
-              <View style={styles.logoContainer}>
-                <View style={styles.logoIcon}>
-                  <Ionicons name="bug-outline" size={28} color="#059669" />
-                </View>
-                <View>
-                  <Text style={styles.logoText}>
-                    Carrap<Text style={styles.logoHighlight}>AI</Text>
-                  </Text>
-                  <Text style={styles.dateText}>
-                    {new Date().toLocaleDateString("pt-BR", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                    })}
-                  </Text>
-                </View>
-              </View>
-            </Animated.View>
-
-            <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-              <TouchableOpacity
-                style={styles.settingsButton}
-                onPress={() => router.push("/vacas")}
-              >
-                <Ionicons name="settings-outline" size={24} color="#4b5563" />
-              </TouchableOpacity>
-            </Animated.View>
-          </View>
-        </LinearGradient>
+        {/* ✅ HEADER TOTALMENTE REMOVIDO - SÓ O CARD DE BOAS-VINDAS */}
 
         {/* CARD DE BOAS-VINDAS */}
         <Animated.View
@@ -341,6 +283,7 @@ export default function Dashboard() {
             {
               opacity: fadeAnim,
               transform: [{ translateY: slideAnim }],
+              marginTop: 20, // 🔥 Ajuste para não ficar colado no topo
             },
           ]}
         >
@@ -352,8 +295,10 @@ export default function Dashboard() {
           >
             <View style={styles.welcomeRow}>
               <View style={styles.welcomeLeft}>
-                <Text style={styles.welcomeBadge}>🌱 BEM-VINDO, PRODUTOR</Text>
-                <Text style={styles.welcomeName}>{usuarioNome}</Text>
+                <Text style={styles.welcomeBadge}>
+                  🌱 BEM-VINDO, {usuario.nome.toUpperCase()}
+                </Text>
+                <Text style={styles.welcomeName}>{usuario.fazenda}</Text>
                 <View style={styles.weatherContainer}>
                   <View style={styles.weatherBadge}>
                     <Ionicons name={getWeatherIcon()} size={18} color="white" />
@@ -364,16 +309,14 @@ export default function Dashboard() {
                   </View>
                   <View style={[styles.weatherBadge, { marginLeft: 8 }]}>
                     <Ionicons name="location" size={18} color="white" />
-                    <Text style={styles.weatherText}>
-                      {localizacao.cidade.split(",")[0]}
-                    </Text>
+                    <Text style={styles.weatherText}>{localizacao.cidade}</Text>
                   </View>
                 </View>
               </View>
               <View style={styles.weatherIcon}>
                 <MaterialCommunityIcons
                   name={
-                    dadosClimaticos.precipitacao > 30
+                    dadosClimaticos.condicao.includes("Chuva")
                       ? "weather-pouring"
                       : "weather-partly-rainy"
                   }
@@ -405,7 +348,9 @@ export default function Dashboard() {
                   <Text style={styles.speedometerTitle}>
                     Nível de Contaminação
                   </Text>
-                  <Text style={styles.speedometerSubtitle}>{fazendaNome}</Text>
+                  <Text style={styles.speedometerSubtitle}>
+                    {usuario.fazenda}
+                  </Text>
                 </View>
                 <View
                   style={[
@@ -451,7 +396,7 @@ export default function Dashboard() {
                   >
                     <Feather name="thermometer" size={22} color="#f97316" />
                   </View>
-                  <Text style={styles.statLabel}>Sensação</Text>
+                  <Text style={styles.statLabel}>Temperatura</Text>
                   <Text style={styles.statValue}>
                     {dadosClimaticos.temperatura}°C
                   </Text>
@@ -459,13 +404,13 @@ export default function Dashboard() {
 
                 <View style={styles.statItem}>
                   <View
-                    style={[styles.statIcon, { backgroundColor: "#eff6ff" }]}
+                    style={[styles.statIcon, { backgroundColor: "#e0f2fe" }]}
                   >
-                    <Feather name="wind" size={22} color="#3b82f6" />
+                    <Feather name="droplet" size={22} color="#0ea5e9" />
                   </View>
-                  <Text style={styles.statLabel}>Vento</Text>
+                  <Text style={styles.statLabel}>Umidade</Text>
                   <Text style={styles.statValue}>
-                    {dadosClimaticos.vento} km/h
+                    {dadosClimaticos.umidade}%
                   </Text>
                 </View>
               </View>
@@ -526,7 +471,8 @@ export default function Dashboard() {
                   >
                     <Text style={styles.alertBadgeText}>
                       {dadosClimaticos.temperatura}°C •{" "}
-                      {dadosClimaticos.umidade}% • {dadosClimaticos.vento}km/h
+                      {dadosClimaticos.umidade}% • Multiplicador{" "}
+                      {alertaClimatico.multiplicador}x
                     </Text>
                   </View>
                 </View>
@@ -546,7 +492,7 @@ export default function Dashboard() {
                 <View>
                   <Text style={styles.mapTitle}>🗺️ Produtores Próximos</Text>
                   <Text style={styles.mapSubtitle}>
-                    {fazendas.length} propriedades na região
+                    {fazendas.length} propriedades em {localizacao.cidade}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -717,8 +663,8 @@ export default function Dashboard() {
         {/* FOOTER */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            {localizacao.cidade} • {dadosClimaticos.temperatura}°C • CarrapAI
-            v1.0
+            {localizacao.cidade} • {dadosClimaticos.temperatura}°C •{" "}
+            {dadosClimaticos.umidade}% • CarrapAI v1.0
           </Text>
         </View>
       </ScrollView>
