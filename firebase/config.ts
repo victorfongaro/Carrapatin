@@ -2,8 +2,9 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, enableIndexedDbPersistence, collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 🔥 CONFIGURAÇÃO DO SEU PROJETO - COLE SUAS CREDENCIAIS AQUI!
+// 🔥 CONFIGURAÇÃO DO SEU PROJETO
 const firebaseConfig = {
   apiKey: "AIzaSyASwjMkj2jRfAFwKsS8uZLhgf41RV6qOww",
   authDomain: "carrapai-9c99e.firebaseapp.com",
@@ -16,7 +17,7 @@ const firebaseConfig = {
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
-// Auth
+// Auth - Versão SIMPLES (sem persistência por enquanto)
 export const auth = getAuth(app);
 
 // Firestore

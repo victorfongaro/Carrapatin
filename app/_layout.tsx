@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons, Feather, FontAwesome5 } from '@expo/vector-icons';
+import { Feather, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { doc, getDoc } from "firebase/firestore";
@@ -9,7 +9,7 @@ import "react-native-reanimated";
 import { db, inicializarFazenda, testFirebaseConnection } from "../firebase/config";
 
 export default function RootLayout() {
-  const [riscoTotal, setRiscoTotal] = useState(0);
+  const [risco, setRisco] = useState(78); // Começa com 78
   const [firebaseStatus, setFirebaseStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const fazendaId = "minha-fazenda-001";
 
@@ -34,7 +34,7 @@ export default function RootLayout() {
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
-        setRiscoTotal(docSnap.data().risco || 0);
+        setRisco(docSnap.data().risco || 0);
       }
     } catch (error) {
       console.error('Erro ao carregar risco:', error);
@@ -111,20 +111,20 @@ export default function RootLayout() {
                 <View className="bg-gray-100 px-3 py-1.5 rounded-full flex-row items-center">
                   <View 
                     className="w-2 h-2 rounded-full mr-2"
-                    style={{ backgroundColor: getRiscoColor(riscoTotal) }}
+                    style={{ backgroundColor: getRiscoColor(risco) }}
                   />
                   <Text 
                     className="text-sm font-bold"
-                    style={{ color: getRiscoColor(riscoTotal) }}
+                    style={{ color: getRiscoColor(risco) }}
                   >
-                    {riscoTotal}%
+                    {risco}%
                   </Text>
                 </View>
                 <TouchableOpacity 
                   className="ml-3 bg-emerald-50 p-2 rounded-full"
                   onPress={() => router.push('/vacas')}
                 >
-                  <FontAwesome5 name="cow" size={18} color="#059669" />
+                  <FontAwesome5 name="cow" size={18} color="#059669" solid />
                 </TouchableOpacity>
               </View>
             ),
