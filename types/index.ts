@@ -11,19 +11,27 @@ export interface Fazenda {
   contato?: string;
 }
 
-// Tipos para Vacas
 export interface Vaca {
   id: string;
   nome: string;
-  numero: string;
-  fotos: {
-    manha: string[];
-    tarde: string[];
+  brinco: string;
+  fotos?: {
+    esquerda?: string;
+    direita?: string;
+    entrePerdas?: string;
   };
-  carrapatosDetectados: number;
-  ultimaAnalise: Date | null;
+  ultimaAnalise?: Date;
+  nivelInfestacao?: number;
 }
-
+export interface VacaState {
+  selectedVaca: Vaca | null;
+  vacas: Vaca[];
+  fotos: {
+    esquerda: string | null;
+    direita: string | null;
+    entrePerdas: string | null;
+  };
+}
 // Tipos para Resultado da IA
 export interface ResultadoAnalise {
   larvas: number;
