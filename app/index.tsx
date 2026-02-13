@@ -7,7 +7,7 @@ import { Velocimetro } from '../components/Velocimetro';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { db, testFirebaseConnection } from '../firebase/config';
 import { collection, getDocs } from 'firebase/firestore';
-import { Fazenda, DashboardProps } from './types';
+import { Fazenda, DashboardProps } from '../types/index';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
