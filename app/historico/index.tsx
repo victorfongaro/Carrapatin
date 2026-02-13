@@ -1,4 +1,4 @@
-import { Feather, Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
@@ -11,7 +11,6 @@ import {
   ScrollView,
   StatusBar,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { Calendar } from "react-native-calendars";
@@ -57,6 +56,7 @@ export default function HistoricoCalendario() {
     const hoje = new Date();
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [salvando, setSalvando] = useState(false);
 
   const fazendaId = "minha-fazenda-001";
   const hoje = new Date();
@@ -107,7 +107,7 @@ export default function HistoricoCalendario() {
         datasSalvas.forEach((data: string) => {
           datasFormatadas[data] = {
             selected: true,
-            selectedColor: "#10b981", // 🔥 Verde igual ao Dashboard
+            selectedColor: "#10b981",
             customStyles: {
               container: {
                 borderRadius: 12,
@@ -132,8 +132,27 @@ export default function HistoricoCalendario() {
     setRefreshing(false);
   };
 
-  // 📅 Seleção de dia com regras
-  const onDayPress = (day: DayType) => {
+  // 💾 Salvar automaticamente no banco
+  const salvarNoBanco = async (datas: string[]) => {
+    if (salvando) return;
+
+    try {
+      setSalvando(true);
+      await setDoc(
+        doc(db, "fazendas", fazendaId),
+        { historicoContaminacao: datas },
+        { merge: true },
+      );
+    } catch (error) {
+      console.log("Erro ao salvar:", error);
+      Alert.alert("😕 Ops!", "Não foi possível salvar. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  // 📅 Seleção de dia com regras e SALVAMENTO AUTOMÁTICO
+  const onDayPress = async (day: DayType) => {
     const dataSelecionada = new Date(day.dateString);
     dataSelecionada.setHours(0, 0, 0, 0);
 
@@ -152,7 +171,7 @@ export default function HistoricoCalendario() {
     } else {
       selected[day.dateString] = {
         selected: true,
-        selectedColor: "#10b981", // 🔥 Verde igual ao Dashboard
+        selectedColor: "#10b981",
         customStyles: {
           container: {
             borderRadius: 12,
@@ -169,24 +188,10 @@ export default function HistoricoCalendario() {
     limiteDistante.setHours(0, 0, 0, 0);
 
     setAvisoDistante(dataSelecionada < limiteDistante);
-  };
 
-  // 💾 Salvar
-  const salvarPeriodo = async () => {
-    try {
-      const datas = Object.keys(datasSelecionadas);
-
-      await setDoc(
-        doc(db, "fazendas", fazendaId),
-        { historicoContaminacao: datas },
-        { merge: true },
-      );
-
-      Alert.alert("✨ Sucesso!", "Período salvo com sucesso!");
-    } catch (error) {
-      console.log("Erro ao salvar:", error);
-      Alert.alert("😕 Ops!", "Não foi possível salvar. Tente novamente.");
-    }
+    // 💾 SALVAR AUTOMATICAMENTE no banco de dados
+    const novasDatas = Object.keys(selected);
+    await salvarNoBanco(novasDatas);
   };
 
   const totalDias = Object.keys(datasSelecionadas).length;
@@ -194,30 +199,6 @@ export default function HistoricoCalendario() {
   // 📆 Função para mudar o mês
   const onMonthChange = (month: MonthType) => {
     setMesAnoAtual(`${month.year}-${String(month.month).padStart(2, "0")}`);
-  };
-
-  // 🎨 Função para status de registro
-  const getRegistroStatus = () => {
-    if (totalDias === 0)
-      return {
-        label: "Sem registros",
-        color: "#6b7280",
-        bg: "#f3f4f6",
-        icon: "calendar-outline",
-      };
-    if (totalDias < 10)
-      return {
-        label: "Poucos registros",
-        color: "#f59e0b",
-        bg: "#fef3c7",
-        icon: "alert-circle-outline",
-      };
-    return {
-      label: "Bom histórico",
-      color: "#10b981",
-      bg: "#d1fae5",
-      icon: "checkmark-circle-outline",
-    };
   };
 
   if (loading) {
@@ -300,21 +281,6 @@ export default function HistoricoCalendario() {
                 </View>
               </View>
             </Animated.View>
-
-            <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-              <TouchableOpacity
-                style={styles.settingsButton}
-                onPress={() =>
-                  Alert.alert("Em breve", "Estatísticas detalhadas")
-                }
-              >
-                <Ionicons
-                  name="stats-chart-outline"
-                  size={24}
-                  color="#4b5563"
-                />
-              </TouchableOpacity>
-            </Animated.View>
           </View>
         </LinearGradient>
 
@@ -383,6 +349,7 @@ export default function HistoricoCalendario() {
               colors={["#ffffff", "#fafafa"]}
               style={styles.speedometerGradient}
             >
+              {/* HEADER SEM BADGE */}
               <View style={styles.speedometerHeader}>
                 <View>
                   <Text style={styles.speedometerTitle}>
@@ -392,26 +359,7 @@ export default function HistoricoCalendario() {
                     Selecione os dias com contaminação
                   </Text>
                 </View>
-                <View
-                  style={[
-                    styles.riskBadge,
-                    { backgroundColor: getRegistroStatus().bg },
-                  ]}
-                >
-                  <Ionicons
-                    name={getRegistroStatus().icon as any}
-                    size={18}
-                    color={getRegistroStatus().color}
-                  />
-                  <Text
-                    style={[
-                      styles.riskText,
-                      { color: getRegistroStatus().color },
-                    ]}
-                  >
-                    {getRegistroStatus().label}
-                  </Text>
-                </View>
+                {/* 🗑️ BADGE REMOVIDA */}
               </View>
 
               <View style={{ padding: 8, marginTop: 8 }}>
@@ -493,19 +441,21 @@ export default function HistoricoCalendario() {
                 />
               </View>
 
-              {/* STATS - DIAS REGISTRADOS */}
+              {/* STATS - DIAS REGISTRADOS COM BADGE TRANSFORMADA */}
               <View style={styles.statsContainer}>
                 <View style={styles.statItem}>
                   <View
                     style={[
                       styles.statIcon,
-                      { backgroundColor: getRegistroStatus().bg },
+                      {
+                        backgroundColor: totalDias > 0 ? "#d1fae5" : "#f3f4f6",
+                      },
                     ]}
                   >
                     <Ionicons
                       name="calendar"
                       size={22}
-                      color={getRegistroStatus().color}
+                      color={totalDias > 0 ? "#10b981" : "#6b7280"}
                     />
                   </View>
                   <Text style={styles.statLabel}>Dias registrados</Text>
@@ -533,24 +483,54 @@ export default function HistoricoCalendario() {
                   </Text>
                 </View>
 
+                {/* ✅ BADGE DE HISTÓRICO COMO STAT ITEM */}
                 <View style={styles.statItem}>
                   <View
                     style={[
                       styles.statIcon,
                       {
-                        backgroundColor: totalDias > 0 ? "#d1fae5" : "#f3f4f6",
+                        backgroundColor:
+                          totalDias === 0
+                            ? "#f3f4f6"
+                            : totalDias < 5
+                              ? "#fef3c7"
+                              : totalDias < 15
+                                ? "#d1fae5"
+                                : "#a7f3d0",
                       },
                     ]}
                   >
                     <Ionicons
-                      name="checkmark-circle"
+                      name={
+                        totalDias === 0
+                          ? "calendar-outline"
+                          : totalDias < 5
+                            ? "alert-circle-outline"
+                            : totalDias < 15
+                              ? "checkmark-circle-outline"
+                              : "ribbon-outline"
+                      }
                       size={22}
-                      color={totalDias > 0 ? "#10b981" : "#9ca3af"}
+                      color={
+                        totalDias === 0
+                          ? "#6b7280"
+                          : totalDias < 5
+                            ? "#f59e0b"
+                            : totalDias < 15
+                              ? "#10b981"
+                              : "#059669"
+                      }
                     />
                   </View>
-                  <Text style={styles.statLabel}>Status</Text>
+                  <Text style={styles.statLabel}>Histórico</Text>
                   <Text style={styles.statValue}>
-                    {totalDias > 0 ? "Ativo" : "Pendente"}
+                    {totalDias === 0
+                      ? "Sem registros"
+                      : totalDias < 5
+                        ? "Poucos"
+                        : totalDias < 15
+                          ? "Bom"
+                          : "Completo"}
                   </Text>
                 </View>
               </View>
@@ -597,7 +577,7 @@ export default function HistoricoCalendario() {
           </Animated.View>
         )}
 
-        {/* RESUMO DO PERÍODO */}
+        {/* RESUMO DO PERÍODO - SEM BOTÃO DE ATUALIZAR */}
         <Animated.View style={[styles.mapCard, { opacity: fadeAnim }]}>
           <View style={styles.mapContainer}>
             <LinearGradient
@@ -612,12 +592,7 @@ export default function HistoricoCalendario() {
                     {totalDias === 1 ? "dia selecionado" : "dias selecionados"}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.refreshButton}
-                  onPress={carregarHistorico}
-                >
-                  <Feather name="refresh-cw" size={18} color="#4b5563" />
-                </TouchableOpacity>
+                {/* ✅ BOTÃO DE ATUALIZAR REMOVIDO - CARD LIMPO */}
               </View>
 
               <View style={{ padding: 16 }}>
@@ -682,59 +657,10 @@ export default function HistoricoCalendario() {
           </View>
         </Animated.View>
 
-        {/* BOTÃO FLUTUANTE */}
-        <View style={{ alignItems: "center", marginVertical: 32 }}>
-          <TouchableOpacity
-            onPress={salvarPeriodo}
-            disabled={totalDias === 0}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={
-                totalDias > 0
-                  ? ["#0f766e", "#0d9488", "#10b981"]
-                  : ["#d1d5db", "#9ca3af"]
-              }
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={{
-                paddingHorizontal: 32,
-                paddingVertical: 16,
-                borderRadius: 999,
-                flexDirection: "row",
-                alignItems: "center",
-                shadowColor: totalDias > 0 ? "#0f766e" : "#6b7280",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.2,
-                shadowRadius: 8,
-                elevation: 4,
-              }}
-            >
-              <Feather
-                name="save"
-                size={22}
-                color="white"
-                style={{ marginRight: 8 }}
-              />
-              <Text
-                style={{ color: "white", fontWeight: "bold", fontSize: 18 }}
-              >
-                Salvar Histórico
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {totalDias === 0 && (
-            <Text style={[styles.footerText, { marginTop: 12 }]}>
-              Selecione pelo menos um dia para salvar
-            </Text>
-          )}
-        </View>
-
         {/* FOOTER */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Atualizado em tempo real • CarrapAI v1.0
+            {salvando ? "💾 Salvando..." : "✅ Sincronizado • CarrapAI v1.0"}
           </Text>
         </View>
       </ScrollView>
