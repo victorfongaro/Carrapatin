@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { db } from "../../firebase/config";
-import { HistoricoProps } from "../types";
+import { HistoricoProps } from "../../types";
 
 type MesId = "jan" | "fev" | "mar" | "abr" | "mai" | "jun";
 
