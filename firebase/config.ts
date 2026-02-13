@@ -1,8 +1,15 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, enableIndexedDbPersistence, collection, doc, setDoc, getDoc } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  enableIndexedDbPersistence, 
+  collection, 
+  doc, 
+  setDoc, 
+  getDoc 
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 🔥 CONFIGURAÇÃO DO SEU PROJETO
 const firebaseConfig = {
@@ -16,12 +23,9 @@ const firebaseConfig = {
 
 // Inicializar Firebase
 const app = initializeApp(firebaseConfig);
-
-// Auth - Versão SIMPLES (sem persistência por enquanto)
-export const auth = getAuth(app);
-
-// Firestore
-export const db = getFirestore(app);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Habilitar persistência offline (apenas mobile)
 if (Platform.OS !== 'web') {
@@ -65,12 +69,14 @@ export const inicializarFazenda = async (fazendaId: string) => {
     if (!docSnap.exists()) {
       await setDoc(docRef, {
         nome: 'Minha Fazenda',
+        proprietario: 'João Mendes',
         risco: 0,
         multiplicadorHistorico: 1.0,
         createdAt: new Date(),
         ultimaAtualizacao: new Date(),
         latitude: -21.244,
-        longitude: -45.147
+        longitude: -45.147,
+        totalVacas: 0
       });
       console.log('✅ Fazenda criada com sucesso!');
     }
@@ -79,4 +85,4 @@ export const inicializarFazenda = async (fazendaId: string) => {
   }
 };
 
-console.log('🔥 Firebase inicializado:', firebaseConfig.projectId);
+export { app, db, auth, storage };

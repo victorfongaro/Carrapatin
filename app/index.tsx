@@ -233,13 +233,11 @@ export default function Dashboard() {
   };
 
   const getWeatherIcon = () => {
-    const condicao = dadosClimaticos.condicao.toLowerCase();
-    if (condicao.includes("chuva")) return "rainy";
-    if (condicao.includes("nublado")) return "cloudy";
-    if (condicao.includes("limpo")) return "sunny";
-    if (condicao.includes("nevoeiro")) return "fog";
-    if (condicao.includes("tempestade")) return "thunderstorm";
-    return "partly-sunny";
+    const clima = dadosClimaticos.condicao;
+    if (clima.includes('Chuva')) return 'rainy';
+    if (clima.includes('Nublado')) return 'cloudy';
+    if (clima.includes('Ensolarado')) return 'sunny';
+    return 'partly-sunny';
   };
 
   if (loading) {
@@ -301,7 +299,7 @@ export default function Dashboard() {
                 <Text style={styles.welcomeName}>{usuario.fazenda}</Text>
                 <View style={styles.weatherContainer}>
                   <View style={styles.weatherBadge}>
-                    <Ionicons name={getWeatherIcon()} size={18} color="white" />
+                    <Ionicons name={getWeatherIcon() as any} size={18} color="white" />
                     <Text style={styles.weatherText}>
                       {dadosClimaticos.temperatura}°C •{" "}
                       {dadosClimaticos.condicao}

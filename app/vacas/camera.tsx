@@ -70,7 +70,7 @@ export default function CameraScreen() {
   const tirarFoto = async () => {
     if (cameraRef.current) {
       const foto = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
+        quality: 0.5,
         base64: true,
       });
       setFotoTirada(foto.uri);

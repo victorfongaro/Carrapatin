@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
@@ -48,23 +49,46 @@ export default function VacasScreen() {
   const [selectedVaca, setSelectedVaca] = useState<Vaca | null>(null);
   const [showVacaSelector, setShowVacaSelector] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
-  const [numeroVacas, setNumeroVacas] = useState('145');
+  const [numeroVacas, setNumeroVacas] = useState('0');
   const [isCalculando, setIsCalculando] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [fotoAtualizada, setFotoAtualizada] = useState(0);
+  const [loading, setLoading] = useState(true);
   
   // ANIMAÇÕES
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
-
+  // Adicione este useEffect ANTES do carregarDados
+  useEffect(() => {
+    const verificarEInicializar = async () => {
+      try {
+        // Tenta carregar - se não houver vacas, a função já cria automaticamente
+        await carregarDados();
+      } catch (error) {
+        console.error('Erro ao inicializar:', error);
+      }
+    };
+    
+    verificarEInicializar();
+  }, []);
   // CARREGAR VACAS DO FIREBASE
   const carregarDados = async () => {
-    const vacasData = await carregarVacas(fazendaId);
-    setVacas(vacasData);
-    if (vacasData.length > 0 && !selectedVaca) {
-      setSelectedVaca(vacasData[0]);
+    try {
+      setLoading(true);
+      console.log('🟡 Carregando vacas...');
+      const vacasData = await carregarVacas(fazendaId);
+      console.log(`✅ ${vacasData.length} vacas carregadas`);
+      setVacas(vacasData);
+      
+      if (vacasData.length > 0 && !selectedVaca) {
+        setSelectedVaca(vacasData[0]);
+        setNumeroVacas(vacasData.length.toString());
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar vacas:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -91,14 +115,17 @@ export default function VacasScreen() {
   }, []);
 
   // ATUALIZAR QUANDO VOLTAR DA CÂMERA
-   useFocusEffect(
+  useFocusEffect(
     useCallback(() => {
       console.log('📸 Tela de vacas em foco - recarregando dados...');
       carregarDados();
     }, [])
   );
+
   const abrirCamera = (posicao: 'esquerda' | 'direita' | 'entrePerdas') => {
     if (!selectedVaca) return;
+    
+    console.log('🔍 Abrindo câmera para vaca:', selectedVaca.id);  // 👈 ADICIONE ISSO
     
     router.push({
       pathname: '/vacas/camera',
@@ -109,7 +136,7 @@ export default function VacasScreen() {
       }
     });
   };
-
+  
   const handleAnalisarCarrapatos = async () => {
     if (!selectedVaca) return;
     
@@ -130,7 +157,7 @@ export default function VacasScreen() {
       }),
     ]).start();
     
-    // SIMULA CÁLCULO DA IA (dado estático)
+    // SIMULA CÁLCULO DA IA (2.5 segundos)
     setTimeout(async () => {
       // Nível de infestação SIMULADO
       const nivelSimulado = Math.floor(Math.random() * 40) + 30; // 30-70%
@@ -140,7 +167,7 @@ export default function VacasScreen() {
       
       setIsCalculando(false);
       
-      // ANIMAÇÃO DE TRANSIÇÃO PARA DASHBOARD
+      // ANIMAÇÃO DE TRANSIÇÃO
       Animated.sequence([
         Animated.timing(scaleAnim, {
           toValue: 0.95,
@@ -164,19 +191,18 @@ export default function VacasScreen() {
           {
             text: 'Ver Dashboard',
             onPress: () => {
-              // ANIMAÇÃO DE SAÍDA - SÓ AQUI VAI PRA DASHBOARD!
               Animated.timing(fadeAnim, {
                 toValue: 0,
                 duration: 300,
                 useNativeDriver: true,
               }).start(() => {
-                router.push('/');  // 👈 APENAS AQUI!
+                router.push('/');
               });
             }
           },
           {
             text: 'Continuar',
-            style: 'cancel'  // 👈 FICA NA TELA DE VACAS
+            style: 'cancel'
           }
         ]
       );
@@ -186,7 +212,7 @@ export default function VacasScreen() {
   const getFotosCount = () => {
     if (!selectedVaca) return 0;
     const fotos = selectedVaca.fotos;
-    return Object.values(fotos).filter(f => f !== null).length;
+    return Object.values(fotos).filter(f => f !== null && f !== undefined).length;
   };
 
   const isProntoParaAnalise = () => {
@@ -267,12 +293,41 @@ export default function VacasScreen() {
     );
   };
 
-  if (!selectedVaca) {
+  // LOADING
+  if (loading) {
     return (
-      <View style={styles.container}>
-        <Text>Carregando...</Text>
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#10b981" />
+        <Text style={{ marginTop: 16, color: '#4b5563' }}>Carregando vacas...</Text>
       </View>
     );
+  }
+
+  // SEM VACAS
+  if (vacas.length === 0) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <MaterialCommunityIcons name="cow-off" size={64} color="#9ca3af" />
+        <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#374151', marginTop: 16 }}>
+          Nenhuma vaca encontrada
+        </Text>
+        <Text style={{ fontSize: 14, color: '#6b7280', textAlign: 'center', marginTop: 8 }}>
+          Volte para o dashboard e puxe para baixo para recarregar
+        </Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: '#059669', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 100, marginTop: 24 }}
+          onPress={() => router.push('/')}
+        >
+          <Text style={{ color: 'white', fontWeight: '600' }}>Ir para Dashboard</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // SE NÃO HOUVER VACA SELECIONADA, SELECIONA A PRIMEIRA
+  if (!selectedVaca && vacas.length > 0) {
+    setSelectedVaca(vacas[0]);
+    return null;
   }
 
   return (
@@ -288,6 +343,9 @@ export default function VacasScreen() {
               refreshing={refreshing} 
               onRefresh={() => {
                 setRefreshing(true);
+
+
+                
                 carregarDados().then(() => setRefreshing(false));
               }}
               tintColor="#10b981"
@@ -303,13 +361,7 @@ export default function VacasScreen() {
               <View style={styles.headerLeft}>
                 <TouchableOpacity 
                   style={styles.backButton}
-                  onPress={() => {
-                    Animated.timing(fadeAnim, {
-                      toValue: 0,
-                      duration: 300,
-                      useNativeDriver: true,
-                    });
-                  }}
+                  onPress={() => router.push('/')}
                 >
                   <Ionicons name="arrow-back" size={24} color="#4b5563" />
                 </TouchableOpacity>
@@ -348,8 +400,8 @@ export default function VacasScreen() {
                     <MaterialCommunityIcons name="cow" size={28} color="#059669" />
                   </View>
                   <View style={styles.vacaInfo}>
-                    <Text style={styles.vacaNome}>{selectedVaca.nome}</Text>
-                    <Text style={styles.vacaBrinco}>Brinco: {selectedVaca.brinco}</Text>
+                    <Text style={styles.vacaNome}>{selectedVaca?.nome || 'Selecione uma vaca'}</Text>
+                    <Text style={styles.vacaBrinco}>Brinco: {selectedVaca?.brinco || '000'}</Text>
                   </View>
                   <View style={styles.fotosCount}>
                     <Text style={styles.fotosCountText}>{getFotosCount()}/3</Text>
@@ -364,17 +416,17 @@ export default function VacasScreen() {
           <View style={styles.fotosGrid}>
             <FotoPlaceholder 
               posicao="esquerda"
-              foto={selectedVaca.fotos?.esquerda || null}
+              foto={selectedVaca?.fotos?.esquerda || null}
               onPress={() => abrirCamera('esquerda')}
             />
             <FotoPlaceholder 
               posicao="entrePerdas"
-              foto={selectedVaca.fotos?.entrePerdas || null}
+              foto={selectedVaca?.fotos?.entrePerdas || null}
               onPress={() => abrirCamera('entrePerdas')}
             />
             <FotoPlaceholder 
               posicao="direita"
-              foto={selectedVaca.fotos?.direita || null}
+              foto={selectedVaca?.fotos?.direita || null}
               onPress={() => abrirCamera('direita')}
             />
           </View>
@@ -410,7 +462,7 @@ export default function VacasScreen() {
             <TouchableOpacity 
               style={[
                 styles.analiseButton,
-                !isProntoParaAnalise() && styles.analiseButtonDisabled
+                (!isProntoParaAnalise() || isCalculando) && styles.analiseButtonDisabled
               ]}
               disabled={!isProntoParaAnalise() || isCalculando}
               onPress={handleAnalisarCarrapatos}

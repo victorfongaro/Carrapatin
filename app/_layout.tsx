@@ -4,12 +4,15 @@ import { StatusBar } from "expo-status-bar";
 import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import "react-native-gesture-handler";
-import "react-native-reanimated";
-import { db, inicializarFazenda, testFirebaseConnection } from "../firebase/config";
-
+import { 
+  db, 
+  inicializarFazenda, 
+  testFirebaseConnection,
+ // ✅ IMPORTAR AQUI
+} from "../firebase/config";
+import { criarVacasTeste } from '../firebase/services';
 export default function RootLayout() {
-  const [risco, setRisco] = useState(78); // Começa com 78
+  const [risco, setRisco] = useState(78);
   const [firebaseStatus, setFirebaseStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const fazendaId = "minha-fazenda-001";
 
@@ -20,6 +23,7 @@ export default function RootLayout() {
   const init = async () => {
     await testarConexao();
     await inicializarFazenda(fazendaId);
+    await criarVacasTeste(fazendaId); // ✅ CRIAR VACAS AUTOMATICAMENTE!
     await carregarRisco();
   };
 
@@ -32,7 +36,6 @@ export default function RootLayout() {
     try {
       const docRef = doc(db, "fazendas", fazendaId);
       const docSnap = await getDoc(docRef);
-
       if (docSnap.exists()) {
         setRisco(docSnap.data().risco || 0);
       }
@@ -74,11 +77,6 @@ export default function RootLayout() {
             height: 85,
             paddingBottom: 25,
             paddingTop: 12,
-            elevation: 8,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: 0.05,
-            shadowRadius: 10,
           },
           tabBarLabelStyle: {
             fontSize: 12,
@@ -87,8 +85,6 @@ export default function RootLayout() {
           },
           headerStyle: {
             backgroundColor: '#FFFFFF',
-            elevation: 0,
-            shadowOpacity: 0,
             borderBottomWidth: 1,
             borderBottomColor: '#F1F5F9',
           },
@@ -98,7 +94,6 @@ export default function RootLayout() {
             fontWeight: '700',
           },
           headerTitleAlign: 'left',
-          headerShadowVisible: false,
         })}
       >
         <Tabs.Screen
@@ -107,21 +102,15 @@ export default function RootLayout() {
             title: "CarrapAI",
             tabBarLabel: "Dashboard",
             headerRight: () => (
-              <View className="mr-4 flex-row items-center">
-                <View className="bg-gray-100 px-3 py-1.5 rounded-full flex-row items-center">
-                  <View 
-                    className="w-2 h-2 rounded-full mr-2"
-                    style={{ backgroundColor: getRiscoColor(risco) }}
-                  />
-                  <Text 
-                    className="text-sm font-bold"
-                    style={{ color: getRiscoColor(risco) }}
-                  >
+              <View style={{ marginRight: 16, flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 6, backgroundColor: getRiscoColor(risco) }} />
+                  <Text style={{ fontSize: 14, fontWeight: 'bold', color: getRiscoColor(risco) }}>
                     {risco}%
                   </Text>
                 </View>
                 <TouchableOpacity 
-                  className="ml-3 bg-emerald-50 p-2 rounded-full"
+                  style={{ marginLeft: 12, backgroundColor: '#d1fae5', padding: 8, borderRadius: 20 }}
                   onPress={() => router.push('/vacas')}
                 >
                   <FontAwesome5 name="cow" size={18} color="#059669" solid />
@@ -136,22 +125,6 @@ export default function RootLayout() {
           options={{
             title: "Monitoramento",
             tabBarLabel: "Vacas",
-            headerRight: () => (
-              <View className="mr-4">
-                <View className={`px-3 py-1.5 rounded-full flex-row items-center ${
-                  firebaseStatus === 'online' ? 'bg-green-50' : 'bg-red-50'
-                }`}>
-                  <View className={`w-2 h-2 rounded-full mr-2 ${
-                    firebaseStatus === 'online' ? 'bg-green-500' : 'bg-red-500'
-                  }`} />
-                  <Text className={`text-xs font-semibold ${
-                    firebaseStatus === 'online' ? 'text-green-700' : 'text-red-700'
-                  }`}>
-                    {firebaseStatus === 'online' ? 'Online' : 'Offline'}
-                  </Text>
-                </View>
-              </View>
-            ),
           }}
         />
 
@@ -159,7 +132,7 @@ export default function RootLayout() {
           name="vacas/camera"
           options={{
             title: "Câmera",
-            href: null,  // 👈 MUDE DE tabBarButton: () => null PARA href: null
+            href: null,
             headerShown: true,
           }}
         />

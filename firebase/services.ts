@@ -324,6 +324,72 @@ export const carregarDadosUsuario = async (fazendaId: string) => {
   }
 };
 
+
+// ===========================================
+// 7. 🐮 CRIAR VACAS DE TESTE NO BANCO
+// ===========================================
+export const criarVacasTeste = async (fazendaId: string) => {
+  try {
+    console.log('🟡 Criando vacas de teste...');
+    
+    const vacasRef = collection(db, 'fazendas', fazendaId, 'vacas');
+    const snapshot = await getDocs(vacasRef);
+    
+    // Só cria se não existir nenhuma
+    if (snapshot.empty) {
+      const vacas = [
+        { brinco: '001', nome: 'Mimosa', cor: 'Malhada' },
+        { brinco: '002', nome: 'Estrela', cor: 'Preta' },
+        { brinco: '003', nome: 'Lua', cor: 'Branca' },
+        { brinco: '004', nome: 'Flor', cor: 'Marrom' },
+        { brinco: '005', nome: 'Bela', cor: 'Malhada' },
+        { brinco: '006', nome: 'Rosa', cor: 'Vermelha' },
+        { brinco: '007', nome: 'Morena', cor: 'Preta' },
+        { brinco: '008', nome: 'Jade', cor: 'Branca' },
+        { brinco: '009', nome: 'Ambar', cor: 'Marrom' },
+        { brinco: '010', nome: 'Duna', cor: 'Malhada' }
+      ];
+
+      for (const vaca of vacas) {
+        const id = `vaca_${vaca.brinco}`;
+        const vacaRef = doc(vacasRef, id);
+        
+        await setDoc(vacaRef, {
+          id,
+          brinco: vaca.brinco,
+          nome: vaca.nome,
+          cor: vaca.cor,
+          fotos: {
+            esquerda: null,
+            direita: null,
+            entrePerdas: null
+          },
+          fotos_metadata: {},
+          nivelInfestacao: Math.floor(Math.random() * 60) + 10, // 10-70%
+          createdAt: Timestamp.now(),
+          ultimaAtualizacao: Timestamp.now()
+        });
+        
+        console.log(`✅ Vaca ${vaca.nome} (${vaca.brinco}) criada!`);
+      }
+      
+      // Atualiza total de vacas na fazenda
+      const fazendaRef = doc(db, 'fazendas', fazendaId);
+      await updateDoc(fazendaRef, {
+        totalVacas: vacas.length,
+        ultimaAtualizacao: Timestamp.now()
+      });
+      
+      console.log(`✅ Total de ${vacas.length} vacas criadas!`);
+    } else {
+      console.log('ℹ️ Vacas já existem, pulando criação');
+    }
+  } catch (error) {
+    console.error('❌ Erro ao criar vacas:', error);
+  }
+};
+
+
 // ===========================================
 // 6. INICIALIZAR DADOS DE TESTE
 // ===========================================
