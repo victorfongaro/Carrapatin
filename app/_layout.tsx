@@ -1,84 +1,131 @@
-import { Feather } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Feather, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { router, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import "react-native-gesture-handler";
 import "react-native-reanimated";
-import { db } from "../firebase/config";
+import { db, inicializarFazenda, testFirebaseConnection } from "../firebase/config";
+
 export default function RootLayout() {
   const [riscoTotal, setRiscoTotal] = useState(0);
+  const [firebaseStatus, setFirebaseStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const fazendaId = "minha-fazenda-001";
 
   useEffect(() => {
-    const carregarRisco = async () => {
+    init();
+  }, []);
+
+  const init = async () => {
+    await testarConexao();
+    await inicializarFazenda(fazendaId);
+    await carregarRisco();
+  };
+
+  const testarConexao = async () => {
+    const isConnected = await testFirebaseConnection();
+    setFirebaseStatus(isConnected ? 'online' : 'offline');
+  };
+
+  const carregarRisco = async () => {
+    try {
       const docRef = doc(db, "fazendas", fazendaId);
       const docSnap = await getDoc(docRef);
 
       if (docSnap.exists()) {
         setRiscoTotal(docSnap.data().risco || 0);
-      } else {
-        await setDoc(docRef, {
-          nome: "Minha Fazenda",
-          risco: 0,
-          createdAt: new Date(),
-        });
       }
-    };
+    } catch (error) {
+      console.error('Erro ao carregar risco:', error);
+    }
+  };
 
-    carregarRisco();
-  }, []);
+  const getRiscoColor = (risco: number): string => {
+    if (risco < 30) return '#22c55e';
+    if (risco < 60) return '#eab308';
+    if (risco < 80) return '#f97316';
+    return '#ef4444';
+  };
 
   return (
     <>
       <StatusBar style="dark" />
       <Tabs
-        screenOptions={{
-          tabBarStyle: {
-            backgroundColor: "#FFFFFF",
-            borderTopWidth: 1,
-            borderTopColor: "#E5E7EB",
-            height: 80,
-            paddingBottom: 20,
-            paddingTop: 10,
+        screenOptions={({ route }) => ({
+          tabBarIcon: ({ focused, color, size }) => {
+            if (route.name === 'index') {
+              return focused ? 
+                <MaterialCommunityIcons name="gauge" size={26} color={color} /> :
+                <MaterialCommunityIcons name="gauge-low" size={26} color={color} />;
+            } else if (route.name === 'vacas/index') {
+              return <FontAwesome5 name="cow" size={22} color={color} />;
+            } else if (route.name === 'historico/index') {
+              return <Feather name="calendar" size={24} color={color} />;
+            }
+            return <Feather name="circle" size={24} color={color} />;
           },
-          tabBarActiveTintColor: "#059669",
-          tabBarInactiveTintColor: "#6B7280",
+          tabBarActiveTintColor: '#059669',
+          tabBarInactiveTintColor: '#94a3b8',
+          tabBarStyle: {
+            backgroundColor: '#FFFFFF',
+            borderTopWidth: 1,
+            borderTopColor: '#E2E8F0',
+            height: 85,
+            paddingBottom: 25,
+            paddingTop: 12,
+            elevation: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -2 },
+            shadowOpacity: 0.05,
+            shadowRadius: 10,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '500',
+            marginTop: 2,
+          },
           headerStyle: {
-            backgroundColor: "#FFFFFF",
+            backgroundColor: '#FFFFFF',
+            elevation: 0,
+            shadowOpacity: 0,
+            borderBottomWidth: 1,
+            borderBottomColor: '#F1F5F9',
           },
           headerTitleStyle: {
-            color: "#065F46",
-            fontSize: 18,
-            fontWeight: "bold",
+            color: '#0F172A',
+            fontSize: 20,
+            fontWeight: '700',
           },
-        }}
+          headerTitleAlign: 'left',
+          headerShadowVisible: false,
+        })}
       >
         <Tabs.Screen
           name="index"
           options={{
-            title: "Dashboard",
+            title: "CarrapAI",
             tabBarLabel: "Dashboard",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="home" size={24} color={color} />
-            ),
-            headerTitle: "Carrapai",
             headerRight: () => (
-              <View className="mr-4">
-                <Text
-                  className={`text-lg font-bold ${
-                    riscoTotal < 30
-                      ? "text-green-600"
-                      : riscoTotal < 60
-                        ? "text-yellow-600"
-                        : riscoTotal < 80
-                          ? "text-orange-600"
-                          : "text-red-600"
-                  }`}
+              <View className="mr-4 flex-row items-center">
+                <View className="bg-gray-100 px-3 py-1.5 rounded-full flex-row items-center">
+                  <View 
+                    className="w-2 h-2 rounded-full mr-2"
+                    style={{ backgroundColor: getRiscoColor(riscoTotal) }}
+                  />
+                  <Text 
+                    className="text-sm font-bold"
+                    style={{ color: getRiscoColor(riscoTotal) }}
+                  >
+                    {riscoTotal}%
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  className="ml-3 bg-emerald-50 p-2 rounded-full"
+                  onPress={() => router.push('/vacas')}
                 >
-                  {riscoTotal}%
-                </Text>
+                  <FontAwesome5 name="cow" size={18} color="#059669" />
+                </TouchableOpacity>
               </View>
             ),
           }}
@@ -87,12 +134,24 @@ export default function RootLayout() {
         <Tabs.Screen
           name="vacas/index"
           options={{
-            title: "Vacas",
+            title: "Monitoramento",
             tabBarLabel: "Vacas",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="camera" size={24} color={color} />
+            headerRight: () => (
+              <View className="mr-4">
+                <View className={`px-3 py-1.5 rounded-full flex-row items-center ${
+                  firebaseStatus === 'online' ? 'bg-green-50' : 'bg-red-50'
+                }`}>
+                  <View className={`w-2 h-2 rounded-full mr-2 ${
+                    firebaseStatus === 'online' ? 'bg-green-500' : 'bg-red-500'
+                  }`} />
+                  <Text className={`text-xs font-semibold ${
+                    firebaseStatus === 'online' ? 'text-green-700' : 'text-red-700'
+                  }`}>
+                    {firebaseStatus === 'online' ? 'Online' : 'Offline'}
+                  </Text>
+                </View>
+              </View>
             ),
-            headerTitle: "Monitoramento das Vacas",
           }}
         />
 
@@ -100,21 +159,16 @@ export default function RootLayout() {
           name="vacas/camera"
           options={{
             title: "Câmera",
-            tabBarButton: () => null, // Esconde da navbar
-            tabBarStyle: { display: "none" },
-            headerShown: false,
+            href: null,
+            headerShown: true,
           }}
         />
 
         <Tabs.Screen
           name="historico/index"
           options={{
-            title: "Histórico",
+            title: "Histórico de Infestação",
             tabBarLabel: "Histórico",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="calendar" size={24} color={color} />
-            ),
-            headerTitle: "Histórico de Infestação",
           }}
         />
       </Tabs>
